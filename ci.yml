@@ -1,0 +1,145 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  frontend-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+        
+    - name: Run frontend linting
+      run: |
+        cd frontend
+        npm run lint
+        
+    - name: Run frontend tests
+      run: |
+        cd frontend
+        npm test -- --coverage --watchAll=false
+        
+    - name: Build frontend
+      run: |
+        cd frontend
+        npm run build
+
+  backend-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_password
+          MYSQL_DATABASE: reading_app_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Setup test database
+      run: |
+        cd backend
+        cp .env.example .env
+        echo "DATABASE_URL=mysql://root:test_password@localhost:3306/reading_app_test" >> .env
+        echo "JWT_SECRET=test_secret_key_for_ci" >> .env
+        
+    - name: Run database migrations
+      run: |
+        cd backend
+        npx prisma db push
+        
+    - name: Run backend tests
+      run: |
+        cd backend
+        npm test
+        
+    - name: Build backend
+      run: |
+        cd backend
+        npm run build
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Run security audit (frontend)
+      run: |
+        cd frontend
+        npm audit --audit-level=high
+        
+    - name: Run security audit (backend)
+      run: |
+        cd backend
+        npm audit --audit-level=high
+
+  deploy:
+    needs: [frontend-test, backend-test, security-scan]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Build production assets
+      run: |
+        cd frontend
+        npm ci
+        npm run build
+        
+        cd ../backend
+        npm ci
+        npm run build
+        
+    - name: Deploy to production
+      run: |
+        echo "🚀 Ready for production deployment!"
+        echo "Built frontend assets and backend ready"
+        # Add your deployment commands here
