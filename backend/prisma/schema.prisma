@@ -1,0 +1,184 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  email     String?  @unique
+  password  String
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isVip     Boolean  @default(false)
+  vipExpiresAt DateTime?
+
+  // 关联
+  bookshelf UserBookshelf[]
+  readingRecords ReadingRecord[]
+  reviews BookReview[]
+  readingSettings UserReadingSettings?
+
+  @@map("users")
+}
+
+model Category {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  description String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+
+  // 关联
+  books Book[]
+
+  @@map("categories")
+}
+
+model Book {
+  id              Int      @id @default(autoincrement())
+  title           String
+  author          String
+  categoryId      Int?
+  cover           String?
+  description     String   @db.Text  // 改为 Text 类型
+  totalWords      Int      @default(0)
+  totalChapters   Int      @default(0)
+  status          BookStatus @default(ONGOING)
+  isFree          Boolean  @default(true)
+  price           Float    @default(0.00)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastChapterUpdate DateTime?
+  viewCount       Int      @default(0)
+  favoriteCount   Int      @default(0)
+  rating          Float    @default(0.00)
+  isFeatured      Boolean  @default(false)
+  tags            Json?
+
+  // 关联
+  category Category? @relation(fields: [categoryId], references: [id])
+  chapters Chapter[]
+  bookshelf UserBookshelf[]
+  readingRecords ReadingRecord[]
+  reviews BookReview[]
+
+  @@map("books")
+}
+
+model Chapter {
+  id            Int      @id @default(autoincrement())
+  bookId        Int
+  chapterNumber Int
+  title         String
+  content       String   @db.LongText
+  wordCount     Int      @default(0)
+  isFree        Boolean  @default(true)
+  price         Float    @default(0.00)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // 关联
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  readingRecords ReadingRecord[]
+
+  @@unique([bookId, chapterNumber])
+  @@map("chapters")
+}
+
+model UserBookshelf {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  bookId     Int
+  addedAt    DateTime @default(now())
+  lastReadAt DateTime?
+  isFavorite Boolean  @default(false)
+
+  // 关联
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId])
+  @@map("user_bookshelf")
+}
+
+model ReadingRecord {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  bookId             Int
+  chapterId          Int
+  progressPercentage Float    @default(0.00)
+  readingPosition    Int      @default(0)
+  readingTime        Int      @default(0)
+  lastReadAt         DateTime @default(now()) @updatedAt
+
+  // 关联
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book    Book    @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapter Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId, chapterId])
+  @@map("reading_records")
+}
+
+model UserReadingSettings {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @unique
+  fontSize       FontSize @default(MEDIUM)
+  fontFamily     String   @default("默认")
+  lineHeight     Float    @default(1.5)
+  theme          Theme    @default(DAY)
+  backgroundColor String  @default("#FFFFFF")
+  textColor      String   @default("#333333")
+  pageMargin     Int      @default(20)
+  autoScroll     Boolean  @default(false)
+  scrollSpeed    Int      @default(3)
+  screenAlwaysOn Boolean  @default(false)
+
+  // 关联
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_reading_settings")
+}
+
+model BookReview {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  bookId     Int
+  rating     Int
+  content    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  likesCount Int      @default(0)
+
+  // 关联
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@map("book_reviews")
+}
+
+enum BookStatus {
+  ONGOING
+  COMPLETED
+  PAUSED
+}
+
+enum FontSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+enum Theme {
+  DAY
+  NIGHT
+  SEPIA
+  CLASSIC
+}
