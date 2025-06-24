@@ -1,4 +1,4 @@
-// src/pages/BookDetail/BookDetail.tsx
+// frontend/src/pages/BookDetail/BookDetail.tsx
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
@@ -12,27 +12,60 @@ import {
   FileText,
   Play,
   Award,
-  MessageCircle
+  MessageCircle,
+  BookmarkPlus,
+  BookmarkCheck
 } from 'lucide-react';
 import { useBookStore } from '../../store/bookStore';
 import { useAuthStore } from '../../store/authStore';
-import type { Chapter } from '../../types';
+import { useBookshelfStore } from '../../store/bookshelfStore';
+import ReviewList from '../../components/ReviewList/ReviewList'; // 🎯 新增导入
+import StarRating from '../../components/StarRating/StarRating'; // 🎯 新增导入
+
+interface Chapter {
+  id: number;
+  chapterNumber: number;
+  title: string;
+  wordCount: number;
+  isFree: boolean;
+  createdAt: string;
+}
 
 const BookDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentBook, loading, error, fetchBook } = useBookStore();
   const { isLoggedIn } = useAuthStore();
+  const { addToBookshelf, removeFromBookshelf, toggleFavorite, checkBookshelfStatus } = useBookshelfStore();
   
   const [activeTab, setActiveTab] = useState<'info' | 'chapters' | 'reviews'>('info');
-  const [isFavorited, setIsFavorited] = useState(false);
   const [showAllChapters, setShowAllChapters] = useState(false);
+  
+  // 🎯 书架状态管理
+  const [bookshelfStatus, setBookshelfStatus] = useState({
+    inBookshelf: false,
+    isFavorite: false
+  });
+  const [bookshelfLoading, setBookshelfLoading] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchBook(parseInt(id));
+      loadBookshelfStatus();
     }
   }, [id, fetchBook]);
+
+  // 🎯 加载书架状态
+  const loadBookshelfStatus = async () => {
+    if (!isLoggedIn || !id) return;
+    
+    try {
+      const status = await checkBookshelfStatus(parseInt(id));
+      setBookshelfStatus(status);
+    } catch (error) {
+      console.error('Failed to load bookshelf status:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -93,15 +126,55 @@ const BookDetail = () => {
     navigate(`/reader/${book.id}/${firstChapter.id}`);
   };
 
-  const handleAddToBookshelf = () => {
+  // 🎯 书架操作
+  const handleBookshelfAction = async () => {
     if (!isLoggedIn) {
       navigate('/login');
       return;
     }
-    
-    setIsFavorited(!isFavorited);
-    // TODO: 实际的收藏逻辑
-    alert(isFavorited ? '已从书架移除' : '已添加到书架');
+
+    setBookshelfLoading(true);
+    try {
+      if (bookshelfStatus.inBookshelf) {
+        await removeFromBookshelf(book.id);
+        setBookshelfStatus({ inBookshelf: false, isFavorite: false });
+      } else {
+        await addToBookshelf(book.id);
+        setBookshelfStatus({ inBookshelf: true, isFavorite: false });
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.error || '操作失败');
+    } finally {
+      setBookshelfLoading(false);
+    }
+  };
+
+  const handleToggleFavorite = async () => {
+    if (!isLoggedIn) {
+      navigate('/login');
+      return;
+    }
+  
+    if (!bookshelfStatus.inBookshelf) {
+      alert('请先添加到书架');
+      return;
+    }
+  
+    try {
+      await toggleFavorite(book.id);
+      // 🎯 修复：重新加载书架状态，而不是依赖返回值
+      await loadBookshelfStatus();
+    } catch (error: any) {
+      alert(error.response?.data?.error || '操作失败');
+    }
+  };
+
+  // 🎯 处理评论更新回调
+  const handleReviewsUpdate = () => {
+    // 重新获取书籍信息以更新评分
+    if (id) {
+      fetchBook(parseInt(id));
+    }
   };
 
   // 安全处理章节数据，添加类型检查
@@ -153,8 +226,8 @@ const BookDetail = () => {
 
               {/* 评分和状态 */}
               <div className="flex items-center space-x-6">
-                <div className="flex items-center space-x-1">
-                  <Star className="h-5 w-5 text-yellow-400 fill-current" />
+                <div className="flex items-center space-x-2">
+                  <StarRating rating={book.rating} size="md" />
                   <span className="text-lg font-semibold">{book.rating}</span>
                   <span className="text-gray-500">({book._count?.reviews || 0}人评价)</span>
                 </div>
@@ -190,19 +263,21 @@ const BookDetail = () => {
               </div>
 
               {/* 标签 */}
-              <div className="flex flex-wrap gap-2">
-                {(book.tags || []).map((tag, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
+              {book.tags && book.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {book.tags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                    >
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {/* 操作按钮 */}
-              <div className="flex space-x-4 pt-4">
+              <div className="flex flex-wrap gap-3 pt-4">
                 <button
                   onClick={handleStartReading}
                   className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -211,17 +286,40 @@ const BookDetail = () => {
                   开始阅读
                 </button>
                 
+                {/* 🎯 改进的书架按钮 */}
                 <button
-                  onClick={handleAddToBookshelf}
+                  onClick={handleBookshelfAction}
+                  disabled={bookshelfLoading}
                   className={`flex items-center px-6 py-3 rounded-lg transition-colors font-medium ${
-                    isFavorited
-                      ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                    bookshelfStatus.inBookshelf
+                      ? 'bg-green-100 text-green-600 hover:bg-green-200'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  } disabled:opacity-50`}
                 >
-                  <Heart className={`h-5 w-5 mr-2 ${isFavorited ? 'fill-current' : ''}`} />
-                  {isFavorited ? '已收藏' : '收藏'}
+                  {bookshelfLoading ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current mr-2"></div>
+                  ) : bookshelfStatus.inBookshelf ? (
+                    <BookmarkCheck className="h-5 w-5 mr-2" />
+                  ) : (
+                    <BookmarkPlus className="h-5 w-5 mr-2" />
+                  )}
+                  {bookshelfLoading ? '处理中...' : (bookshelfStatus.inBookshelf ? '已在书架' : '加入书架')}
                 </button>
+
+                {/* 🎯 收藏按钮 */}
+                {bookshelfStatus.inBookshelf && (
+                  <button
+                    onClick={handleToggleFavorite}
+                    className={`flex items-center px-6 py-3 rounded-lg transition-colors font-medium ${
+                      bookshelfStatus.isFavorite
+                        ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Heart className={`h-5 w-5 mr-2 ${bookshelfStatus.isFavorite ? 'fill-current' : ''}`} />
+                    {bookshelfStatus.isFavorite ? '已收藏' : '收藏'}
+                  </button>
+                )}
                 
                 <button className="flex items-center px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
                   <Share2 className="h-5 w-5 mr-2" />
@@ -304,6 +402,13 @@ const BookDetail = () => {
                       <dt className="text-gray-500">字数：</dt>
                       <dd className="text-gray-900">{formatNumber(book.totalWords)}</dd>
                     </div>
+                    <div className="flex justify-between">
+                      <dt className="text-gray-500">评分：</dt>
+                      <dd className="flex items-center">
+                        <StarRating rating={book.rating} size="sm" />
+                        <span className="ml-2 text-gray-900">{book.rating}</span>
+                      </dd>
+                    </div>
                   </dl>
                 </div>
                 
@@ -321,6 +426,10 @@ const BookDetail = () => {
                     <div className="flex justify-between">
                       <dt className="text-gray-500">是否免费：</dt>
                       <dd className="text-gray-900">{book.isFree ? '免费' : 'VIP'}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-gray-500">收藏数：</dt>
+                      <dd className="text-gray-900">{book._count?.bookshelf || 0}</dd>
                     </div>
                   </dl>
                 </div>
@@ -385,22 +494,13 @@ const BookDetail = () => {
             </div>
           )}
 
-          {/* 读者评论 */}
+          {/* 🎯 读者评论 - 集成评论系统 */}
           {activeTab === 'reviews' && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900">读者评论</h3>
-              
-              <div className="text-center py-12 text-gray-500">
-                <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p>暂无评论</p>
-                <p className="text-sm">成为第一个发表评论的读者吧！</p>
-                
-                {isLoggedIn && (
-                  <button className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                    写评论
-                  </button>
-                )}
-              </div>
+              <ReviewList 
+                bookId={book.id} 
+                onReviewsUpdate={handleReviewsUpdate}
+              />
             </div>
           )}
         </div>

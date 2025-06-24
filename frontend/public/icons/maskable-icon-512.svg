@@ -1,0 +1,19 @@
+<!-- maskable-icon-512.svg - 可遮罩图标 512x512 -->
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 安全区域背景 - 填满整个画布 -->
+  <rect width="512" height="512" fill="#2563eb"/>
+  
+  <!-- 图标内容 - 在安全区域内（20%边距） -->
+  <g transform="translate(102.4, 102.4)">
+    <!-- 书本图标，适合遮罩 -->
+    <rect x="0" y="0" width="307.2" height="307.2" rx="40" fill="white"/>
+    <rect x="24" y="24" width="259.2" height="259.2" rx="20" fill="#2563eb"/>
+    
+    <!-- 页面线条 -->
+    <rect x="48" y="80" width="120" height="12" rx="6" fill="white" opacity="0.9"/>
+    <rect x="48" y="112" width="180" height="12" rx="6" fill="white" opacity="0.9"/>
+    <rect x="48" y="144" width="140" height="12" rx="6" fill="white" opacity="0.9"/>
+    <rect x="48" y="176" width="160" height="12" rx="6" fill="white" opacity="0.9"/>
+    <rect x="48" y="208" width="120" height="12" rx="6" fill="white" opacity="0.9"/>
+  </g>
+</svg>

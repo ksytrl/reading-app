@@ -1,0 +1,34 @@
+<!-- 书架图标 SVG -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 书架外框 -->
+  <path d="M4 2h16a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" 
+        fill="none" 
+        stroke="currentColor" 
+        stroke-width="1.5"/>
+  
+  <!-- 书架层板 -->
+  <line x1="5" y1="7" x2="19" y2="7" stroke="currentColor" stroke-width="1.5"/>
+  <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="1.5"/>
+  <line x1="5" y1="17" x2="19" y2="17" stroke="currentColor" stroke-width="1.5"/>
+  
+  <!-- 第一层书本 -->
+  <rect x="6" y="4" width="2" height="2.5" fill="currentColor" opacity="0.7"/>
+  <rect x="9" y="4" width="1.5" height="2.5" fill="currentColor" opacity="0.5"/>
+  <rect x="11.5" y="4" width="2" height="2.5" fill="currentColor" opacity="0.8"/>
+  <rect x="14.5" y="4" width="1.5" height="2.5" fill="currentColor" opacity="0.6"/>
+  <rect x="17" y="4" width="1.5" height="2.5" fill="currentColor" opacity="0.7"/>
+  
+  <!-- 第二层书本 -->
+  <rect x="6" y="9" width="1.5" height="2.5" fill="currentColor" opacity="0.6"/>
+  <rect x="8.5" y="9" width="2" height="2.5" fill="currentColor" opacity="0.8"/>
+  <rect x="11.5" y="9" width="1.5" height="2.5" fill="currentColor" opacity="0.5"/>
+  <rect x="14" y="9" width="2" height="2.5" fill="currentColor" opacity="0.7"/>
+  <rect x="17" y="9" width="1.5" height="2.5" fill="currentColor" opacity="0.6"/>
+  
+  <!-- 第三层书本 -->
+  <rect x="6" y="14" width="2" height="2.5" fill="currentColor" opacity="0.7"/>
+  <rect x="9" y="14" width="1.5" height="2.5" fill="currentColor" opacity="0.5"/>
+  <rect x="11.5" y="14" width="1.5" height="2.5" fill="currentColor" opacity="0.8"/>
+  <rect x="14" y="14" width="2" height="2.5" fill="currentColor" opacity="0.6"/>
+  <rect x="17" y="14" width="1.5" height="2.5" fill="currentColor" opacity="0.7"/>
+</svg>

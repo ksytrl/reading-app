@@ -1,6 +1,6 @@
-// src/store/bookStore.ts
+// frontend/src/store/bookStore.ts
 import { create } from 'zustand';
-import { bookApi } from '../services/api';
+import { api } from '../services/api';
 import type { Book, BookListResponse } from '../types';
 
 interface BookState {
@@ -20,6 +20,7 @@ interface BookState {
     limit?: number;
     category?: string;
     search?: string;
+    sort?: string; // 🎯 新增排序参数
   }) => Promise<void>;
   
   fetchBook: (id: number) => Promise<void>;
@@ -41,16 +42,28 @@ export const useBookStore = create<BookState>((set) => ({
   fetchBooks: async (params = {}) => {
     set({ loading: true, error: null });
     try {
-      const response: BookListResponse = await bookApi.getBooks(params);
+      console.log('🔍 前端发起搜索请求:', params); // 🎯 添加调试日志
+      
+      const response = await api.get('/books', { params });
+      const data: BookListResponse = response.data;
+      
+      console.log('✅ 前端收到搜索结果:', data); // 🎯 添加调试日志
+      
       set({ 
-        books: response.books,
-        pagination: response.pagination,
+        books: data.books,
+        pagination: data.pagination,
         loading: false 
       });
     } catch (error: any) {
+      console.error('❌ 前端搜索错误:', error); // 🎯 添加调试日志
+      
+      const errorMessage = error.response?.data?.error || '获取书籍列表失败';
+      console.error('错误详情:', error.response?.data);
+      
       set({ 
-        error: error.response?.data?.error || '获取书籍列表失败', 
-        loading: false 
+        error: errorMessage, 
+        loading: false,
+        books: [] // 🎯 清空书籍列表
       });
     }
   },
@@ -58,7 +71,8 @@ export const useBookStore = create<BookState>((set) => ({
   fetchBook: async (id: number) => {
     set({ loading: true, error: null });
     try {
-      const book = await bookApi.getBook(id);
+      const response = await api.get(`/books/${id}`);
+      const book: Book = response.data;
       set({ 
         currentBook: book,
         loading: false 

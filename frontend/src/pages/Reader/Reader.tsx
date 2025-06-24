@@ -1,458 +1,582 @@
-// src/pages/Reader/Reader.tsx
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+// frontend/src/pages/Reader/Reader.tsx
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, 
-  Settings, 
-  List, 
   ChevronLeft, 
   ChevronRight, 
-  Maximize, 
-  Minimize,
-  BookOpen,
+  Settings, 
+  List, 
   Bookmark,
-  Sun,
+  Share2,
+  Download,
+  WifiOff,
+  Wifi,
+  AlertCircle,
+  RotateCcw,
   Moon,
+  Sun,
   Type,
-  Palette
+  Maximize,
+  Minimize,
+  X
 } from 'lucide-react';
-import { chapterApi } from '../../services/api';
 import { useReaderStore } from '../../store/readerStore';
-import { useAuthStore } from '../../store/authStore';
-import type { Chapter, Book } from '../../types';
-
-interface ChapterWithBook extends Chapter {
-  book: Pick<Book, 'id' | 'title' | 'author' | 'totalChapters'>;
-}
+import { useOffline } from '../../hooks/useOffline';
+import { offlineStorage } from '../../services/offlineStorage';
+import { cacheManager } from '../../services/cacheManager';
+import { syncManager } from '../../services/syncManager';
+import { bookApi, chapterApi } from '../../services/api';
+import type { Book, Chapter } from '../../types';
 
 const Reader = () => {
   const { bookId, chapterId } = useParams<{ bookId: string; chapterId: string }>();
   const navigate = useNavigate();
-  const contentRef = useRef<HTMLDivElement>(null);
-  const { user } = useAuthStore();
   
+  // 📚 阅读器状态
   const {
     settings,
     isSettingsOpen,
     isFullscreen,
     showCatalog,
+    updateSettings,
     toggleSettings,
     toggleFullscreen,
     toggleCatalog,
-    updateSettings,
-    applyTheme,
     saveProgress,
-    getProgress
+    getProgress,
+    applyTheme
   } = useReaderStore();
 
-  const [chapter, setChapter] = useState<ChapterWithBook | null>(null);
+  // 🌐 离线状态
+  const { isOnline, isOffline, attemptReconnect } = useOffline();
+
+  // 📖 数据状态
+  const [book, setBook] = useState<Book | null>(null);
+  const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showControls, setShowControls] = useState(true);
+  const [isOfflineData, setIsOfflineData] = useState(false);
+  const [cacheStatus, setCacheStatus] = useState<'none' | 'partial' | 'full'>('none');
+  
+  // 📏 阅读进度
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const lastSaveTime = useRef<number>(0);
 
-  // 字体大小映射
+  // 📱 响应式字体大小映射
   const fontSizeMap = {
-    small: '16px',
-    medium: '18px',
-    large: '20px',
-    xlarge: '24px',
+    small: 'text-sm',
+    medium: 'text-base',
+    large: 'text-lg',
+    xlarge: 'text-xl'
   };
 
-  // 字体族映射
   const fontFamilyMap = {
-    default: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    serif: 'Georgia, "Times New Roman", serif',
-    sans: '"Helvetica Neue", Arial, sans-serif',
+    default: 'font-sans',
+    serif: 'font-serif',
+    sans: 'font-mono'
   };
 
-  useEffect(() => {
-    if (chapterId) {
-      loadChapter(parseInt(chapterId));
-    }
-  }, [chapterId]);
+  // 🎨 主题样式
+  const themeStyles = {
+    light: 'bg-white text-gray-900',
+    dark: 'bg-gray-900 text-gray-100',
+    sepia: 'bg-amber-50 text-amber-900'
+  };
 
-  useEffect(() => {
-    if (bookId) {
-      loadChapters(parseInt(bookId));
-    }
-  }, [bookId]);
+  // 📊 加载书籍和章节数据
+  const loadBookData = useCallback(async () => {
+    if (!bookId) return;
 
-  // 自动隐藏控制栏
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    
-    const resetTimer = () => {
-      setShowControls(true);
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (isFullscreen) {
-          setShowControls(false);
-        }
-      }, 3000);
-    };
+    setLoading(true);
+    setError(null);
 
-    if (isFullscreen) {
-      window.addEventListener('mousemove', resetTimer);
-      window.addEventListener('scroll', resetTimer);
-      resetTimer();
-    } else {
-      setShowControls(true);
-    }
-
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('mousemove', resetTimer);
-      window.removeEventListener('scroll', resetTimer);
-    };
-  }, [isFullscreen]);
-
-  // 保存阅读进度
-  useEffect(() => {
-    if (!chapter || !bookId || !chapterId) return;
-
-    const handleScroll = () => {
-      const element = contentRef.current;
-      if (!element) return;
-
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
-      const progress = (scrollTop / scrollHeight) * 100;
-
-      saveProgress(parseInt(bookId), parseInt(chapterId), scrollTop, progress);
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [chapter, bookId, chapterId, saveProgress]);
-
-  // 恢复阅读进度
-  useEffect(() => {
-    if (chapter && bookId && chapterId) {
-      const progress = getProgress(parseInt(bookId), parseInt(chapterId));
-      if (progress && progress.scrollPosition > 0) {
-        setTimeout(() => {
-          window.scrollTo(0, progress.scrollPosition);
-        }, 100);
-      }
-    }
-  }, [chapter, bookId, chapterId, getProgress]);
-
-  const loadChapter = async (id: number) => {
     try {
-      setLoading(true);
-      setError(null);
-      const data = await chapterApi.getChapter(id);
-      setChapter(data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || '加载章节失败');
+      // 🔍 优先尝试从缓存加载
+      let bookData: Book | null = null;
+      let chaptersData: Chapter[] = [];
+      let isFromCache = false;
+
+      if (isOffline) {
+        // 🔌 离线模式：只从缓存读取
+        bookData = await offlineStorage.getBook(parseInt(bookId));
+        chaptersData = await offlineStorage.getBookChapters(parseInt(bookId));
+        isFromCache = true;
+        
+        if (!bookData) {
+          setError('此书籍未缓存，无法离线阅读');
+          return;
+        }
+      } else {
+        // 🌐 在线模式：网络优先，缓存备用
+        try {
+          bookData = await bookApi.getBook(parseInt(bookId));
+          chaptersData = await chapterApi.getBookChapters(parseInt(bookId));
+          
+          // 📦 更新缓存
+          await offlineStorage.saveBook(bookData);
+          await offlineStorage.saveBookChapters(parseInt(bookId), chaptersData);
+        } catch (networkError) {
+          console.warn('网络请求失败，尝试从缓存加载:', networkError);
+          
+          // 🔄 网络失败时从缓存加载
+          bookData = await offlineStorage.getBook(parseInt(bookId));
+          chaptersData = await offlineStorage.getBookChapters(parseInt(bookId));
+          isFromCache = true;
+          
+          if (!bookData) {
+            throw new Error('网络连接失败且无缓存数据');
+          }
+        }
+      }
+
+      setBook(bookData);
+      setChapters(chaptersData);
+      setIsOfflineData(isFromCache);
+      
+      // 📊 检查缓存状态
+      const cachedChapters = await offlineStorage.getCachedChapterIds(parseInt(bookId));
+      const cacheRatio = cachedChapters.length / chaptersData.length;
+      
+      if (cacheRatio === 1) {
+        setCacheStatus('full');
+      } else if (cacheRatio > 0) {
+        setCacheStatus('partial');
+      } else {
+        setCacheStatus('none');
+      }
+
+    } catch (err) {
+      console.error('加载书籍数据失败:', err);
+      setError(err instanceof Error ? err.message : '加载失败');
     } finally {
       setLoading(false);
     }
-  };
+  }, [bookId, isOffline]);
 
-  const loadChapters = async (bookId: number) => {
+  // 📖 加载章节内容
+  const loadChapterContent = useCallback(async (targetChapterId: string) => {
+    if (!targetChapterId || !bookId) return;
+
+    setLoading(true);
+    setError(null);
+
     try {
-      const data = await chapterApi.getBookChapters(bookId);
-      setChapters(data);
+      let chapterData: Chapter | null = null;
+      let isFromCache = false;
+
+      if (isOffline) {
+        // 🔌 离线模式：只从缓存读取
+        chapterData = await offlineStorage.getChapter(parseInt(targetChapterId));
+        isFromCache = true;
+        
+        if (!chapterData) {
+          setError('此章节未缓存，无法离线阅读');
+          return;
+        }
+      } else {
+        // 🌐 在线模式：网络优先，缓存备用
+        try {
+          chapterData = await chapterApi.getChapter(parseInt(targetChapterId));
+          
+          // 📦 缓存章节内容
+          await offlineStorage.saveChapter(chapterData);
+          
+          // 🚀 预缓存下一章节
+          const currentIndex = chapters.findIndex(c => c.id === parseInt(targetChapterId));
+          if (currentIndex >= 0 && currentIndex < chapters.length - 1) {
+            const nextChapter = chapters[currentIndex + 1];
+            cacheManager.preloadChapter(nextChapter.id).catch(console.warn);
+          }
+          
+        } catch (networkError) {
+          console.warn('网络请求失败，尝试从缓存加载:', networkError);
+          
+          // 🔄 网络失败时从缓存加载
+          chapterData = await offlineStorage.getChapter(parseInt(targetChapterId));
+          isFromCache = true;
+          
+          if (!chapterData) {
+            throw new Error('网络连接失败且章节未缓存');
+          }
+        }
+      }
+
+      setCurrentChapter(chapterData);
+      setIsOfflineData(isFromCache);
+      
+      // 📊 恢复阅读进度
+      if (bookId) {
+        const progress = getProgress(parseInt(bookId), parseInt(targetChapterId));
+        if (progress && contentRef.current) {
+          setTimeout(() => {
+            contentRef.current?.scrollTo({
+              top: progress.scrollPosition,
+              behavior: 'smooth'
+            });
+          }, 100);
+        }
+      }
+
     } catch (err) {
-      console.error('Failed to load chapters:', err);
+      console.error('加载章节内容失败:', err);
+      setError(err instanceof Error ? err.message : '加载章节失败');
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [bookId, chapterId, isOffline, chapters, getProgress]);
 
-  const getCurrentChapterIndex = () => {
-    return chapters.findIndex(ch => ch.id === parseInt(chapterId || '0'));
-  };
+  // 🔄 处理滚动事件（节流保存进度）
+  const handleScroll = useCallback(() => {
+    if (!contentRef.current || !bookId || !chapterId) return;
 
-  const navigateToChapter = (chapterIndex: number) => {
-    if (chapterIndex >= 0 && chapterIndex < chapters.length) {
-      const targetChapter = chapters[chapterIndex];
-      navigate(`/reader/${bookId}/${targetChapter.id}`);
+    const element = contentRef.current;
+    const scrollTop = element.scrollTop;
+    const scrollHeight = element.scrollHeight - element.clientHeight;
+    const progress = Math.min(100, Math.max(0, (scrollTop / scrollHeight) * 100));
+    
+    setScrollProgress(progress);
+
+    // 📊 节流保存阅读进度（每5秒最多保存一次）
+    const now = Date.now();
+    if (now - lastSaveTime.current > 5000) {
+      lastSaveTime.current = now;
+      
+      saveProgress(
+        parseInt(bookId),
+        parseInt(chapterId),
+        scrollTop,
+        progress
+      );
+
+      // 🔄 在线时同步到服务器
+      if (isOnline) {
+        syncManager.saveReadingProgress({
+          bookId: parseInt(bookId),
+          chapterId: parseInt(chapterId),
+          progressPercentage: progress,
+          readingPosition: scrollTop
+        }).catch(console.warn);
+      }
     }
+  }, [bookId, chapterId, isOnline, saveProgress]);
+
+  // 📱 初始化数据加载
+  useEffect(() => {
+    loadBookData();
+  }, [loadBookData]);
+
+  // 📖 切换章节时加载内容
+  useEffect(() => {
+    if (chapterId) {
+      loadChapterContent(chapterId);
+    }
+  }, [chapterId, loadChapterContent]);
+
+  // 📊 设置滚动监听
+  useEffect(() => {
+    const element = contentRef.current;
+    if (!element) return;
+
+    element.addEventListener('scroll', handleScroll, { passive: true });
+    return () => element.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
+  // 🎯 章节导航
+  const navigateToChapter = (targetChapterId: number) => {
+    navigate(`/reader/${bookId}/${targetChapterId}`);
   };
 
-  const handlePrevChapter = () => {
-    const currentIndex = getCurrentChapterIndex();
+  const goToPreviousChapter = () => {
+    if (!currentChapter) return;
+    
+    const currentIndex = chapters.findIndex(c => c.id === currentChapter.id);
     if (currentIndex > 0) {
-      navigateToChapter(currentIndex - 1);
+      navigateToChapter(chapters[currentIndex - 1].id);
     }
   };
 
-  const handleNextChapter = () => {
-    const currentIndex = getCurrentChapterIndex();
-    if (currentIndex < chapters.length - 1) {
-      navigateToChapter(currentIndex + 1);
+  const goToNextChapter = () => {
+    if (!currentChapter) return;
+    
+    const currentIndex = chapters.findIndex(c => c.id === currentChapter.id);
+    if (currentIndex >= 0 && currentIndex < chapters.length - 1) {
+      navigateToChapter(chapters[currentIndex + 1].id);
     }
   };
 
+  // 📦 批量缓存章节
+  const cacheAllChapters = async () => {
+    if (!book || !chapters.length) return;
+
+    try {
+      await cacheManager.cacheBookChapters(book.id, chapters);
+      setCacheStatus('full');
+    } catch (error) {
+      console.error('缓存章节失败:', error);
+    }
+  };
+
+  // 🔧 渲染加载状态
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="text-gray-600">
+            {isOffline ? '离线加载中...' : '加载中...'}
+          </p>
+        </div>
       </div>
     );
   }
 
-  if (error || !chapter) {
+  // ❌ 渲染错误状态
+  if (error) {
     return (
-      <div className="text-center py-12">
-        <div className="text-red-600 mb-4">❌ {error || '章节不存在'}</div>
-        <button 
-          onClick={() => navigate(`/book/${bookId}`)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          返回书籍详情
-        </button>
-      </div>
-    );
-  }
-
-  const currentIndex = getCurrentChapterIndex();
-  const canGoPrev = currentIndex > 0;
-  const canGoNext = currentIndex < chapters.length - 1;
-
-  const readerStyle = {
-    fontSize: fontSizeMap[settings.fontSize],
-    fontFamily: fontFamilyMap[settings.fontFamily],
-    lineHeight: settings.lineHeight,
-    backgroundColor: settings.backgroundColor,
-    color: settings.textColor,
-    maxWidth: settings.maxWidth,
-    padding: `40px ${settings.pageMargin}px`,
-  };
-
-  return (
-    <div 
-      className={`min-h-screen transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}
-      style={{ 
-        backgroundColor: settings.backgroundColor,
-        color: settings.textColor 
-      }}
-    >
-      {/* 顶部控制栏 */}
-      <div 
-        className={`sticky top-0 z-40 transition-transform duration-300 ${
-          isFullscreen && !showControls ? '-translate-y-full' : 'translate-y-0'
-        }`}
-        style={{ backgroundColor: settings.backgroundColor, borderBottom: `1px solid ${settings.theme === 'dark' ? '#374151' : '#e5e7eb'}` }}
-      >
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => navigate(`/book/${bookId}`)}
-              className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-100 hover:bg-opacity-20 transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-              <span>返回</span>
-            </button>
-            
-            <div className="text-sm">
-              <h1 className="font-medium">{chapter.book.title}</h1>
-              <p className="opacity-75">{chapter.title}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={toggleCatalog}
-              className="p-2 rounded-lg hover:bg-gray-100 hover:bg-opacity-20 transition-colors"
-              title="目录"
-            >
-              <List className="h-5 w-5" />
-            </button>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center space-y-4 max-w-md mx-auto px-4">
+          <AlertCircle className="h-16 w-16 text-red-500 mx-auto" />
+          <h2 className="text-xl font-semibold text-gray-900">加载失败</h2>
+          <p className="text-gray-600">{error}</p>
+          
+          <div className="space-y-2">
+            {isOffline && (
+              <button
+                onClick={attemptReconnect}
+                className="flex items-center space-x-2 mx-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span>重试连接</span>
+              </button>
+            )}
             
             <button
-              onClick={toggleSettings}
-              className="p-2 rounded-lg hover:bg-gray-100 hover:bg-opacity-20 transition-colors"
-              title="设置"
+              onClick={() => navigate('/bookshelf')}
+              className="block w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
             >
-              <Settings className="h-5 w-5" />
-            </button>
-            
-            <button
-              onClick={toggleFullscreen}
-              className="p-2 rounded-lg hover:bg-gray-100 hover:bg-opacity-20 transition-colors"
-              title={isFullscreen ? "退出全屏" : "全屏阅读"}
-            >
-              {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+              返回书架
             </button>
           </div>
         </div>
       </div>
+    );
+  }
 
-      {/* 阅读内容 */}
-      <div className="flex justify-center">
-        <article 
-          ref={contentRef}
-          className="prose max-w-none"
-          style={readerStyle}
-        >
-          <header className="mb-8">
-            <h1 className="text-2xl font-bold mb-2">{chapter.title}</h1>
-            <div className="text-sm opacity-75 mb-4">
-              <span>字数：{chapter.wordCount?.toLocaleString()}</span>
-              <span className="mx-2">•</span>
-              <span>第 {chapter.chapterNumber} 章</span>
-              <span className="mx-2">•</span>
-              <span>{chapter.book.author}</span>
-            </div>
-          </header>
-          
-          <div 
-            className="whitespace-pre-line"
-            style={{ lineHeight: settings.lineHeight }}
+  // 📱 渲染阅读器界面
+  return (
+    <div className={`min-h-screen ${themeStyles[settings.theme]} transition-colors duration-300`}>
+      {/* 📱 顶部工具栏 */}
+      <div className="sticky top-0 z-40 bg-white bg-opacity-95 backdrop-blur-sm border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          {/* 🔙 返回按钮 */}
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
           >
-            {chapter.content}
+            <ChevronLeft className="h-5 w-5" />
+            <span className="hidden sm:inline">返回</span>
+          </button>
+
+          {/* 📚 书籍信息 */}
+          <div className="flex-1 mx-4 text-center">
+            <h1 className="font-semibold text-gray-900 truncate">
+              {book?.title}
+            </h1>
+            <p className="text-sm text-gray-600 truncate">
+              {currentChapter?.title}
+            </p>
           </div>
-          
-          {/* 章节导航 */}
-          <footer className="mt-12 pt-8 border-t border-gray-200 border-opacity-50">
-            <div className="flex justify-between items-center">
-              <button
-                onClick={handlePrevChapter}
-                disabled={!canGoPrev}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                  canGoPrev 
-                    ? 'hover:bg-gray-100 hover:bg-opacity-20' 
-                    : 'opacity-50 cursor-not-allowed'
-                }`}
-              >
-                <ChevronLeft className="h-5 w-5" />
-                <span>上一章</span>
-              </button>
 
-              <Link
-                to={`/book/${bookId}`}
-                className="px-4 py-2 rounded-lg hover:bg-gray-100 hover:bg-opacity-20 transition-colors"
-              >
-                目录
-              </Link>
-
-              <button
-                onClick={handleNextChapter}
-                disabled={!canGoNext}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                  canGoNext 
-                    ? 'hover:bg-gray-100 hover:bg-opacity-20' 
-                    : 'opacity-50 cursor-not-allowed'
-                }`}
-              >
-                <span>下一章</span>
-                <ChevronRight className="h-5 w-5" />
-              </button>
+          {/* 🔧 工具按钮 */}
+          <div className="flex items-center space-x-2">
+            {/* 🌐 连接状态 */}
+            <div className="flex items-center space-x-1">
+              {isOffline ? (
+                <WifiOff className="h-4 w-4 text-red-500" />
+              ) : (
+                <Wifi className="h-4 w-4 text-green-500" />
+              )}
+              {isOfflineData && (
+                <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">
+                  缓存
+                </span>
+              )}
             </div>
-          </footer>
-        </article>
+
+            {/* 📦 缓存按钮 */}
+            {isOnline && cacheStatus !== 'full' && (
+              <button
+                onClick={cacheAllChapters}
+                className="p-2 text-gray-600 hover:text-blue-600 transition-colors"
+                title="缓存所有章节"
+              >
+                <Download className="h-5 w-5" />
+              </button>
+            )}
+
+            {/* 📋 目录按钮 */}
+            <button
+              onClick={toggleCatalog}
+              className="p-2 text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <List className="h-5 w-5" />
+            </button>
+
+            {/* ⚙️ 设置按钮 */}
+            <button
+              onClick={toggleSettings}
+              className="p-2 text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <Settings className="h-5 w-5" />
+            </button>
+
+            {/* 📱 全屏按钮 */}
+            <button
+              onClick={toggleFullscreen}
+              className="p-2 text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              {isFullscreen ? (
+                <Minimize className="h-5 w-5" />
+              ) : (
+                <Maximize className="h-5 w-5" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* 📊 阅读进度条 */}
+        <div className="mt-2">
+          <div className="w-full bg-gray-200 h-1 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-600 transition-all duration-300"
+              style={{ width: `${scrollProgress}%` }}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* 设置面板 */}
-      {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div 
-            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto"
-            style={{ 
-              backgroundColor: settings.backgroundColor,
-              color: settings.textColor,
-              border: `1px solid ${settings.theme === 'dark' ? '#374151' : '#e5e7eb'}`
-            }}
-          >
-            <div className="p-6">
+      {/* 📖 主内容区域 */}
+      <div className="relative flex">
+        {/* 📋 章节目录侧边栏 */}
+        {showCatalog && (
+          <div className="fixed inset-y-0 left-0 z-30 w-80 bg-white shadow-lg border-r border-gray-200 overflow-y-auto">
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">章节目录</h3>
+                <button
+                  onClick={toggleCatalog}
+                  className="p-1 text-gray-600 hover:text-gray-900"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-1">
+                {chapters.map((chapter, index) => (
+                  <button
+                    key={chapter.id}
+                    onClick={() => {
+                      navigateToChapter(chapter.id);
+                      toggleCatalog();
+                    }}
+                    className={`w-full text-left p-3 rounded-lg transition-colors ${
+                      currentChapter?.id === chapter.id
+                        ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                        : 'hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium truncate">
+                        第{index + 1}章 {chapter.title}
+                      </span>
+                      {/* 📦 缓存状态指示 */}
+                      {cacheStatus === 'full' && (
+                        <Download className="h-4 w-4 text-green-500" />
+                      )}
+                    </div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      {chapter.wordCount?.toLocaleString()} 字
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ⚙️ 设置面板 */}
+        {isSettingsOpen && (
+          <div className="fixed inset-y-0 right-0 z-30 w-80 bg-white shadow-lg border-l border-gray-200 overflow-y-auto">
+            <div className="p-4">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold">阅读设置</h3>
+                <h3 className="text-lg font-semibold text-gray-900">阅读设置</h3>
                 <button
                   onClick={toggleSettings}
-                  className="p-2 rounded-lg hover:bg-gray-100 hover:bg-opacity-20"
+                  className="p-1 text-gray-600 hover:text-gray-900"
                 >
-                  ✕
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
               <div className="space-y-6">
-                {/* 主题设置 */}
+                {/* 🎨 主题设置 */}
                 <div>
-                  <label className="block text-sm font-medium mb-3">
-                    <Palette className="h-4 w-4 inline mr-2" />
-                    阅读主题
-                  </label>
+                  <h4 className="text-sm font-medium text-gray-900 mb-3">阅读主题</h4>
                   <div className="grid grid-cols-3 gap-2">
-                    {(['light', 'dark', 'sepia'] as const).map((theme) => (
+                    {[
+                      { key: 'light', label: '日间', icon: Sun, color: 'bg-white' },
+                      { key: 'dark', label: '夜间', icon: Moon, color: 'bg-gray-900' },
+                      { key: 'sepia', label: '护眼', icon: Sun, color: 'bg-amber-50' }
+                    ].map(({ key, label, icon: Icon, color }) => (
                       <button
-                        key={theme}
-                        onClick={() => applyTheme(theme)}
+                        key={key}
+                        onClick={() => applyTheme(key as 'light' | 'dark' | 'sepia')}
                         className={`p-3 rounded-lg border-2 transition-colors ${
-                          settings.theme === theme 
-                            ? 'border-blue-500' 
-                            : 'border-gray-200 border-opacity-50'
+                          settings.theme === key
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
                         }`}
-                        style={{
-                          backgroundColor: theme === 'light' ? '#ffffff' : theme === 'dark' ? '#1a1a1a' : '#f7f3e9',
-                          color: theme === 'light' ? '#333333' : theme === 'dark' ? '#e5e5e5' : '#5c4b37'
-                        }}
                       >
-                        {theme === 'light' && <Sun className="h-4 w-4 mx-auto mb-1" />}
-                        {theme === 'dark' && <Moon className="h-4 w-4 mx-auto mb-1" />}
-                        {theme === 'sepia' && <BookOpen className="h-4 w-4 mx-auto mb-1" />}
-                        <div className="text-xs">
-                          {theme === 'light' && '日间'}
-                          {theme === 'dark' && '夜间'}
-                          {theme === 'sepia' && '护眼'}
+                        <div className={`w-full h-8 ${color} rounded mb-2 border border-gray-200`} />
+                        <div className="flex items-center justify-center space-x-1">
+                          <Icon className="h-4 w-4" />
+                          <span className="text-sm">{label}</span>
                         </div>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* 字体大小 */}
+                {/* 🔤 字体设置 */}
                 <div>
-                  <label className="block text-sm font-medium mb-3">
-                    <Type className="h-4 w-4 inline mr-2" />
-                    字体大小
-                  </label>
+                  <h4 className="text-sm font-medium text-gray-900 mb-3">字体大小</h4>
                   <div className="grid grid-cols-4 gap-2">
-                    {(['small', 'medium', 'large', 'xlarge'] as const).map((size) => (
+                    {[
+                      { key: 'small', label: '小' },
+                      { key: 'medium', label: '中' },
+                      { key: 'large', label: '大' },
+                      { key: 'xlarge', label: '特大' }
+                    ].map(({ key, label }) => (
                       <button
-                        key={size}
-                        onClick={() => updateSettings({ fontSize: size })}
-                        className={`p-2 rounded-lg border transition-colors ${
-                          settings.fontSize === size
-                            ? 'border-blue-500 bg-blue-50 bg-opacity-50'
-                            : 'border-gray-200 border-opacity-50 hover:bg-gray-100 hover:bg-opacity-20'
+                        key={key}
+                        onClick={() => updateSettings({ fontSize: key as any })}
+                        className={`p-2 rounded-lg border text-sm transition-colors ${
+                          settings.fontSize === key
+                            ? 'border-blue-500 bg-blue-50 text-blue-600'
+                            : 'border-gray-200 hover:border-gray-300'
                         }`}
                       >
-                        <div style={{ fontSize: fontSizeMap[size] }}>A</div>
+                        {label}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* 字体族 */}
+                {/* 📐 行间距设置 */}
                 <div>
-                  <label className="block text-sm font-medium mb-3">字体类型</label>
-                  <div className="space-y-2">
-                    {(['default', 'serif', 'sans'] as const).map((font) => (
-                      <button
-                        key={font}
-                        onClick={() => updateSettings({ fontFamily: font })}
-                        className={`w-full p-3 text-left rounded-lg border transition-colors ${
-                          settings.fontFamily === font
-                            ? 'border-blue-500 bg-blue-50 bg-opacity-50'
-                            : 'border-gray-200 border-opacity-50 hover:bg-gray-100 hover:bg-opacity-20'
-                        }`}
-                        style={{ fontFamily: fontFamilyMap[font] }}
-                      >
-                        {font === 'default' && '系统默认'}
-                        {font === 'serif' && '衬线字体'}
-                        {font === 'sans' && '无衬线字体'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 行间距 */}
-                <div>
-                  <label className="block text-sm font-medium mb-3">
-                    行间距: {settings.lineHeight}
-                  </label>
+                  <h4 className="text-sm font-medium text-gray-900 mb-3">行间距</h4>
                   <input
                     type="range"
                     min="1.2"
@@ -462,88 +586,94 @@ const Reader = () => {
                     onChange={(e) => updateSettings({ lineHeight: parseFloat(e.target.value) })}
                     className="w-full"
                   />
-                </div>
-
-                {/* 页面宽度 */}
-                <div>
-                  <label className="block text-sm font-medium mb-3">页面宽度</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { label: '窄', value: '600px' },
-                      { label: '中', value: '800px' },
-                      { label: '宽', value: '1000px' },
-                    ].map((width) => (
-                      <button
-                        key={width.value}
-                        onClick={() => updateSettings({ maxWidth: width.value })}
-                        className={`p-2 rounded-lg border transition-colors ${
-                          settings.maxWidth === width.value
-                            ? 'border-blue-500 bg-blue-50 bg-opacity-50'
-                            : 'border-gray-200 border-opacity-50 hover:bg-gray-100 hover:bg-opacity-20'
-                        }`}
-                      >
-                        {width.label}
-                      </button>
-                    ))}
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>紧密</span>
+                    <span>{settings.lineHeight}</span>
+                    <span>宽松</span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* 目录侧边栏 */}
-      {showCatalog && (
-        <div className="fixed inset-0 z-50 flex">
-          <div 
-            className="flex-1 bg-black bg-opacity-50"
-            onClick={toggleCatalog}
-          />
-          <div 
-            className="w-80 h-full overflow-y-auto"
+        {/* 📖 章节内容 */}
+        <div
+          ref={contentRef}
+          className={`flex-1 overflow-y-auto ${showCatalog ? 'ml-80' : ''} ${
+            isSettingsOpen ? 'mr-80' : ''
+          } transition-all duration-300`}
+          style={{ height: isFullscreen ? '100vh' : 'calc(100vh - 120px)' }}
+        >
+          <article
+            className={`max-w-4xl mx-auto p-6 ${fontSizeMap[settings.fontSize]} ${fontFamilyMap[settings.fontFamily]}`}
             style={{ 
-              backgroundColor: settings.backgroundColor,
-              color: settings.textColor,
-              borderLeft: `1px solid ${settings.theme === 'dark' ? '#374151' : '#e5e7eb'}`
+              lineHeight: settings.lineHeight,
+              maxWidth: settings.maxWidth,
+              margin: `0 auto`,
+              padding: `${settings.pageMargin}px`
             }}
           >
-            <div className="p-4 border-b border-gray-200 border-opacity-50">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">目录</h3>
-                <button
-                  onClick={toggleCatalog}
-                  className="p-2 rounded-lg hover:bg-gray-100 hover:bg-opacity-20"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-            <div className="p-2">
-              {chapters.map((ch, index) => (
-                <button
-                  key={ch.id}
-                  onClick={() => {
-                    navigate(`/reader/${bookId}/${ch.id}`);
-                    toggleCatalog();
-                  }}
-                  className={`w-full text-left p-3 rounded-lg transition-colors ${
-                    ch.id === parseInt(chapterId || '0')
-                      ? 'bg-blue-100 bg-opacity-50 text-blue-600'
-                      : 'hover:bg-gray-100 hover:bg-opacity-20'
-                  }`}
-                >
-                  <div className="font-medium truncate">{ch.title}</div>
-                  <div className="text-xs opacity-75 mt-1">
-                    {ch.wordCount?.toLocaleString()}字
-                    {!ch.isFree && <span className="ml-2 text-yellow-600">VIP</span>}
+            {currentChapter && (
+              <>
+                <header className="mb-8 text-center">
+                  <h1 className="text-2xl font-bold mb-2">
+                    {currentChapter.title}
+                  </h1>
+                  <div className="flex items-center justify-center space-x-4 text-sm text-gray-500">
+                    <span>{currentChapter.wordCount?.toLocaleString()} 字</span>
+                    {isOfflineData && (
+                      <span className="bg-blue-100 text-blue-600 px-2 py-1 rounded-full">
+                        离线缓存
+                      </span>
+                    )}
                   </div>
-                </button>
-              ))}
-            </div>
-          </div>
+                </header>
+
+                <div className="prose prose-lg max-w-none">
+                  {currentChapter.content.split('\n').map((paragraph, index) => (
+                    <p key={index} className="mb-4 leading-relaxed">
+                      {paragraph.trim() || '\u00A0'}
+                    </p>
+                  ))}
+                </div>
+
+                {/* 📱 章节导航 */}
+                <footer className="mt-12 pt-8 border-t border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={goToPreviousChapter}
+                      disabled={!currentChapter || chapters.findIndex(c => c.id === currentChapter.id) === 0}
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span>上一章</span>
+                    </button>
+
+                    <div className="text-center">
+                      <p className="text-sm text-gray-500">
+                        {chapters.findIndex(c => c.id === currentChapter?.id) + 1} / {chapters.length}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        进度: {Math.round(scrollProgress)}%
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={goToNextChapter}
+                      disabled={!currentChapter || chapters.findIndex(c => c.id === currentChapter.id) === chapters.length - 1}
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <span>下一章</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </footer>
+              </>
+            )}
+          </article>
         </div>
-      )}
+      </div>
     </div>
   );
 };

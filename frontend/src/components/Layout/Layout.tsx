@@ -1,360 +1,410 @@
-// src/components/Layout/Layout.tsx
-import { ReactNode, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+// frontend/src/components/Layout/Layout.tsx
+import { useState, useEffect, ReactNode } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
+  Home, 
+  Search, 
   BookOpen, 
-  Home as HomeIcon, 
-  LogIn, 
   User, 
-  LogOut, 
-  BookmarkIcon, 
-  Settings, 
-  ChevronDown,
-  Upload as UploadIcon,
-  Menu,
-  X
+  Upload, 
+  Menu, 
+  X,
+  Wifi,
+  WifiOff,
+  Download,
+  Smartphone,
+  RotateCcw,
+  Bell,
+  Settings
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useOffline } from '../../hooks/useOffline';
+import { usePWA } from '../../hooks/usePWA';
 
 interface LayoutProps {
   children: ReactNode;
 }
 
 const Layout = ({ children }: LayoutProps) => {
-  const { user, isLoggedIn, logout } = useAuthStore();
+  const location = useLocation();
   const navigate = useNavigate();
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const { user, logout } = useAuthStore();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // 🌐 离线状态和PWA功能
+  const { 
+    isOnline, 
+    isOffline, 
+    wasOffline, 
+    offlineDuration,
+    attemptReconnect,
+    getConnectionDescription 
+  } = useOffline();
+  
+  const {
+    isInstallable,
+    showInstallPrompt,
+    isStandalone,
+    hasUpdate
+  } = usePWA();
 
-  const handleLogout = () => {
-    logout();
-    setShowUserMenu(false);
-    setShowMobileMenu(false);
-    navigate('/');
+  // 📱 自动关闭移动端菜单
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  // 📱 处理PWA安装
+  const handleInstallApp = async () => {
+    try {
+      // 这里应该调用实际的PWA安装逻辑
+      console.log('📱 PWA安装请求');
+      // 如果usePWA hook中有installApp方法，应该调用它
+      // await installApp();
+    } catch (error) {
+      console.error('❌ PWA安装失败:', error);
+    }
   };
 
-  const closeMobileMenu = () => {
-    setShowMobileMenu(false);
+  // 🔄 处理应用更新
+  const handleUpdateApp = async () => {
+    try {
+      // 这里应该调用实际的PWA更新逻辑
+      console.log('🔄 应用更新请求');
+      // 如果usePWA hook中有updateApp方法，应该调用它
+      // await updateApp();
+    } catch (error) {
+      console.error('❌ 应用更新失败:', error);
+    }
+  };
+
+  // 🔗 导航链接配置
+  const navLinks = [
+    { to: '/', label: '首页', icon: Home, requireAuth: false },
+    { to: '/search', label: '搜索', icon: Search, requireAuth: false },
+    { to: '/bookshelf', label: '书架', icon: BookOpen, requireAuth: true },
+    { to: '/upload', label: '上传', icon: Upload, requireAuth: true },
+    { to: '/profile', label: '我的', icon: User, requireAuth: true },
+  ];
+
+  // 🎨 获取链接样式
+  const getLinkStyle = (path: string) => {
+    const isActive = location.pathname === path;
+    return `flex items-center space-x-2 p-3 rounded-lg transition-colors ${
+      isActive
+        ? 'bg-blue-600 text-white'
+        : 'text-gray-700 hover:bg-gray-100 hover:text-blue-600'
+    }`;
+  };
+
+  // 📱 移动端底部导航样式
+  const getMobileLinkStyle = (path: string) => {
+    const isActive = location.pathname === path;
+    return `flex flex-col items-center justify-center p-2 transition-colors ${
+      isActive
+        ? 'text-blue-600'
+        : 'text-gray-500'
+    }`;
+  };
+
+  // 🕐 格式化离线时长
+  const formatOfflineDuration = (duration: number): string => {
+    const minutes = Math.floor(duration / 60000);
+    const seconds = Math.floor((duration % 60000) / 1000);
+    
+    if (minutes > 0) {
+      return `${minutes}分${seconds}秒`;
+    }
+    return `${seconds}秒`;
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            {/* Logo */}
-            <Link 
-              to="/" 
-              className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
-              onClick={closeMobileMenu}
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* 🔔 离线/更新通知栏 */}
+      {(isOffline || hasUpdate || (wasOffline && isOnline)) && (
+        <div className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          isOffline 
+            ? 'bg-red-500' 
+            : hasUpdate 
+              ? 'bg-green-500'
+              : 'bg-blue-500'
+        } text-white px-4 py-2 shadow-lg`}>
+          <div className="flex items-center justify-between max-w-7xl mx-auto">
+            <div className="flex items-center space-x-2">
+              {isOffline ? (
+                <WifiOff className="h-4 w-4" />
+              ) : hasUpdate ? (
+                <Download className="h-4 w-4" />
+              ) : (
+                <Wifi className="h-4 w-4" />
+              )}
+              
+              <span className="text-sm font-medium">
+                {isOffline && (
+                  `🔌 离线模式 - 已离线 ${formatOfflineDuration(offlineDuration)}`
+                )}
+                {hasUpdate && '🎉 新版本可用！'}
+                {wasOffline && isOnline && '🌐 网络已恢复'}
+              </span>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              {isOffline && (
+                <button
+                  onClick={attemptReconnect}
+                  className="flex items-center space-x-1 px-3 py-1 bg-white bg-opacity-20 rounded-lg text-sm hover:bg-opacity-30 transition-colors"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>重试</span>
+                </button>
+              )}
+              
+              {hasUpdate && (
+                <button
+                  onClick={handleUpdateApp}
+                  className="flex items-center space-x-1 px-3 py-1 bg-white bg-opacity-20 rounded-lg text-sm hover:bg-opacity-30 transition-colors"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>更新</span>
+                </button>
+              )}
+              
+              {isOnline && (
+                <span className="text-xs opacity-75">
+                  {getConnectionDescription()}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📱 PWA安装提示栏 */}
+      {!isStandalone && isInstallable && showInstallPrompt && (
+        <div className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-3 shadow-lg"
+             style={{ top: (isOffline || hasUpdate || (wasOffline && isOnline)) ? '40px' : '0' }}>
+          <div className="flex items-center justify-between max-w-7xl mx-auto">
+            <div className="flex items-center space-x-3">
+              <Smartphone className="h-5 w-5" />
+              <div>
+                <p className="font-medium">安装阅读App</p>
+                <p className="text-sm opacity-90">添加到主屏幕，获得更好的体验</p>
+              </div>
+            </div>
+            
+            <button
+              onClick={handleInstallApp}
+              className="flex items-center space-x-2 px-4 py-2 bg-white bg-opacity-20 rounded-lg text-sm font-medium hover:bg-opacity-30 transition-colors"
             >
+              <Download className="h-4 w-4" />
+              <span>安装</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 📱 顶部导航栏 */}
+      <header className={`bg-white shadow-sm border-b border-gray-200 transition-all duration-300 ${
+        (isOffline || hasUpdate || (wasOffline && isOnline)) || (!isStandalone && isInstallable && showInstallPrompt)
+          ? 'mt-10 md:mt-12' 
+          : ''
+      }`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            {/* 🏠 Logo */}
+            <Link to="/" className="flex items-center space-x-2">
               <BookOpen className="h-8 w-8 text-blue-600" />
-              <h1 className="text-xl font-bold text-gray-900">阅读App</h1>
+              <span className="text-xl font-bold text-gray-900">阅读App</span>
+              {isStandalone && (
+                <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">PWA</span>
+              )}
             </Link>
 
-            {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center space-x-6">
-              <Link 
-                to="/" 
-                className="flex items-center space-x-1 text-gray-700 hover:text-blue-600 transition-colors"
-              >
-                <HomeIcon className="h-4 w-4" />
-                <span>首页</span>
-              </Link>
-              
-              {isLoggedIn && (
-                <>
-                  <Link 
-                    to="/bookshelf" 
-                    className="flex items-center space-x-1 text-gray-700 hover:text-blue-600 transition-colors"
-                  >
-                    <BookmarkIcon className="h-4 w-4" />
-                    <span>书架</span>
+            {/* 🖥️ 桌面端导航 */}
+            <nav className="hidden md:flex items-center space-x-1">
+              {navLinks.map(({ to, label, icon: Icon, requireAuth }) => {
+                if (requireAuth && !user) return null;
+                
+                return (
+                  <Link key={to} to={to} className={getLinkStyle(to)}>
+                    <Icon className="h-5 w-5" />
+                    <span>{label}</span>
                   </Link>
-                  
-                  <Link 
-                    to="/upload" 
-                    className="flex items-center space-x-1 text-gray-700 hover:text-blue-600 transition-colors"
-                  >
-                    <UploadIcon className="h-4 w-4" />
-                    <span>上传</span>
-                  </Link>
-                </>
-              )}
+                );
+              })}
             </nav>
 
-            {/* Desktop User Menu */}
-            <div className="hidden md:flex items-center space-x-4">
-              {isLoggedIn ? (
-                <div className="relative">
-                  {/* User Button */}
-                  <button
-                    onClick={() => setShowUserMenu(!showUserMenu)}
-                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                      <User className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-gray-700 font-medium">
-                      {user?.username}
-                    </span>
-                    <ChevronDown className="h-4 w-4 text-gray-500" />
-                  </button>
+            {/* 🔧 右侧操作区 */}
+            <div className="flex items-center space-x-3">
+              {/* 🌐 网络状态指示器（桌面端） */}
+              <div className="hidden md:flex items-center space-x-2">
+                {isOnline ? (
+                  <div className="flex items-center space-x-1 text-green-600">
+                    <Wifi className="h-4 w-4" />
+                    <span className="text-xs">在线</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-1 text-red-600">
+                    <WifiOff className="h-4 w-4" />
+                    <span className="text-xs">离线</span>
+                  </div>
+                )}
+              </div>
 
-                  {/* Desktop Dropdown Menu */}
-                  {showUserMenu && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border z-50">
-                      <div className="py-1">
-                        <div className="px-4 py-3 border-b">
-                          <p className="text-sm font-medium text-gray-900">{user?.username}</p>
-                          <p className="text-xs text-gray-500">{user?.email || '未设置邮箱'}</p>
-                          {user?.isVip && (
-                            <span className="inline-block mt-1 px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
-                              VIP会员
-                            </span>
-                          )}
-                        </div>
-                        
-                        <Link
-                          to="/profile"
-                          className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          onClick={() => setShowUserMenu(false)}
-                        >
-                          <User className="h-4 w-4 mr-3" />
-                          个人中心
-                        </Link>
-                        
-                        <Link
-                          to="/bookshelf"
-                          className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          onClick={() => setShowUserMenu(false)}
-                        >
-                          <BookmarkIcon className="h-4 w-4 mr-3" />
-                          我的书架
-                        </Link>
-                        
-                        <Link
-                          to="/upload"
-                          className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          onClick={() => setShowUserMenu(false)}
-                        >
-                          <UploadIcon className="h-4 w-4 mr-3" />
-                          上传书籍
-                        </Link>
-                        
-                        <Link
-                          to="/settings"
-                          className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          onClick={() => setShowUserMenu(false)}
-                        >
-                          <Settings className="h-4 w-4 mr-3" />
-                          阅读设置
-                        </Link>
-                        
-                        <hr className="my-1" />
-                        
-                        <button
-                          onClick={handleLogout}
-                          className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                        >
-                          <LogOut className="h-4 w-4 mr-3" />
-                          退出登录
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              {/* 🔔 通知图标 */}
+              {hasUpdate && (
+                <button
+                  onClick={handleUpdateApp}
+                  className="relative p-2 text-gray-600 hover:text-blue-600 transition-colors"
+                  title="有新版本可用"
+                >
+                  <Bell className="h-5 w-5" />
+                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full"></span>
+                </button>
+              )}
+
+              {/* 👤 用户菜单 */}
+              {user ? (
+                <div className="flex items-center space-x-3">
+                  <span className="hidden md:block text-sm text-gray-600">
+                    欢迎, {user.username}
+                  </span>
+                  <button
+                    onClick={() => {
+                      logout();
+                      navigate('/');
+                    }}
+                    className="text-sm text-red-600 hover:text-red-700 transition-colors"
+                  >
+                    退出
+                  </button>
                 </div>
               ) : (
-                <div className="flex items-center space-x-3">
+                <div className="hidden md:flex items-center space-x-2">
                   <Link
                     to="/login"
-                    className="flex items-center space-x-1 text-gray-700 hover:text-blue-600 transition-colors"
+                    className="text-sm text-gray-600 hover:text-blue-600 transition-colors"
                   >
-                    <LogIn className="h-4 w-4" />
-                    <span>登录</span>
+                    登录
                   </Link>
+                  <span className="text-gray-300">|</span>
                   <Link
                     to="/register"
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                    className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
                   >
                     注册
                   </Link>
                 </div>
               )}
-            </div>
 
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setShowMobileMenu(!showMobileMenu)}
-              className="md:hidden p-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-            >
-              {showMobileMenu ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-          </div>
-
-          {/* Mobile Navigation */}
-          {showMobileMenu && (
-            <div className="md:hidden mt-4 pb-4 border-t">
-              <div className="flex flex-col space-y-2 pt-4">
-                <Link
-                  to="/"
-                  className="flex items-center space-x-2 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-                  onClick={closeMobileMenu}
-                >
-                  <HomeIcon className="h-4 w-4" />
-                  <span>首页</span>
-                </Link>
-
-                {isLoggedIn ? (
-                  <>
-                    <Link
-                      to="/bookshelf"
-                      className="flex items-center space-x-2 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-                      onClick={closeMobileMenu}
-                    >
-                      <BookmarkIcon className="h-4 w-4" />
-                      <span>我的书架</span>
-                    </Link>
-                    
-                    <Link
-                      to="/upload"
-                      className="flex items-center space-x-2 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-                      onClick={closeMobileMenu}
-                    >
-                      <UploadIcon className="h-4 w-4" />
-                      <span>上传书籍</span>
-                    </Link>
-                    
-                    <Link
-                      to="/profile"
-                      className="flex items-center space-x-2 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-                      onClick={closeMobileMenu}
-                    >
-                      <User className="h-4 w-4" />
-                      <span>个人中心</span>
-                    </Link>
-                    
-                    <Link
-                      to="/settings"
-                      className="flex items-center space-x-2 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-                      onClick={closeMobileMenu}
-                    >
-                      <Settings className="h-4 w-4" />
-                      <span>阅读设置</span>
-                    </Link>
-
-                    <hr className="my-2" />
-                    
-                    <div className="px-3 py-2">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                          <User className="h-4 w-4 text-white" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{user?.username}</p>
-                          <p className="text-xs text-gray-500">{user?.email || '未设置邮箱'}</p>
-                        </div>
-                      </div>
-                      {user?.isVip && (
-                        <span className="inline-block px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full mb-2">
-                          VIP会员
-                        </span>
-                      )}
-                      <button
-                        onClick={handleLogout}
-                        className="flex items-center space-x-2 w-full px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-                      >
-                        <LogOut className="h-4 w-4" />
-                        <span>退出登录</span>
-                      </button>
-                    </div>
-                  </>
+              {/* 📱 移动端菜单按钮 */}
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="md:hidden p-2 text-gray-600 hover:text-blue-600 transition-colors"
+              >
+                {isMobileMenuOpen ? (
+                  <X className="h-6 w-6" />
                 ) : (
-                  <>
-                    <Link
-                      to="/login"
-                      className="flex items-center space-x-2 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-                      onClick={closeMobileMenu}
-                    >
-                      <LogIn className="h-4 w-4" />
-                      <span>登录</span>
-                    </Link>
-                    <Link
-                      to="/register"
-                      className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg mx-3"
-                      onClick={closeMobileMenu}
-                    >
-                      <span>注册</span>
-                    </Link>
-                  </>
+                  <Menu className="h-6 w-6" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 📱 移动端菜单 */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden bg-white border-t border-gray-200 shadow-lg">
+            <div className="px-4 py-3 space-y-2">
+              {/* 👤 用户信息 */}
+              {user ? (
+                <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm font-medium text-gray-900">
+                    {user.username}
+                  </span>
+                  <button
+                    onClick={() => {
+                      logout();
+                      navigate('/');
+                    }}
+                    className="text-sm text-red-600"
+                  >
+                    退出
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-4 py-2 border-b border-gray-100">
+                  <Link to="/login" className="text-sm text-gray-600">
+                    登录
+                  </Link>
+                  <Link to="/register" className="text-sm text-blue-600">
+                    注册
+                  </Link>
+                </div>
+              )}
+
+              {/* 🔗 导航链接 */}
+              {navLinks.map(({ to, label, icon: Icon, requireAuth }) => {
+                if (requireAuth && !user) return null;
+                
+                return (
+                  <Link key={to} to={to} className={getLinkStyle(to)}>
+                    <Icon className="h-5 w-5" />
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
+
+              {/* 🌐 网络状态 */}
+              <div className="flex items-center justify-between py-2 border-t border-gray-100">
+                <div className="flex items-center space-x-2">
+                  {isOnline ? (
+                    <Wifi className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <WifiOff className="h-4 w-4 text-red-600" />
+                  )}
+                  <span className="text-sm text-gray-600">
+                    {isOnline ? `在线 - ${getConnectionDescription()}` : '离线模式'}
+                  </span>
+                </div>
+                
+                {isOffline && (
+                  <button
+                    onClick={attemptReconnect}
+                    className="text-sm text-blue-600"
+                  >
+                    重连
+                  </button>
                 )}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-6xl mx-auto px-4 py-8 w-full">
+      {/* 📱 主内容区域 */}
+      <main className="flex-1 pb-16 md:pb-0">
         {children}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-8">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div>
-              <h3 className="text-lg font-semibold mb-4">阅读App</h3>
-              <p className="text-gray-400 text-sm">
-                为您提供优质的在线阅读体验，支持用户上传和海量书籍
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">功能</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><Link to="/" className="hover:text-white transition-colors">书籍浏览</Link></li>
-                <li><Link to="/" className="hover:text-white transition-colors">在线阅读</Link></li>
-                <li><Link to="/upload" className="hover:text-white transition-colors">上传书籍</Link></li>
-                <li><Link to="/bookshelf" className="hover:text-white transition-colors">个人书架</Link></li>
-                <li><Link to="/profile" className="hover:text-white transition-colors">阅读记录</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">分类</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><Link to="/?category=玄幻" className="hover:text-white transition-colors">玄幻</Link></li>
-                <li><Link to="/?category=都市" className="hover:text-white transition-colors">都市</Link></li>
-                <li><Link to="/?category=历史" className="hover:text-white transition-colors">历史</Link></li>
-                <li><Link to="/?category=科幻" className="hover:text-white transition-colors">科幻</Link></li>
-                <li><Link to="/?category=用户上传" className="hover:text-white transition-colors">用户上传</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">联系我们</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li>客服邮箱: support@readingapp.com</li>
-                <li>意见反馈: feedback@readingapp.com</li>
-                <li>技术支持: tech@readingapp.com</li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm text-gray-400">
-            <p>&copy; 2024 阅读App. All rights reserved. | 支持用户上传txt书籍</p>
-          </div>
+      {/* 📱 移动端底部导航 */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-30">
+        <div className="flex">
+          {navLinks.slice(0, 5).map(({ to, label, icon: Icon, requireAuth }) => {
+            if (requireAuth && !user) return null;
+            
+            return (
+              <Link
+                key={to}
+                to={to}
+                className={`${getMobileLinkStyle(to)} flex-1 min-w-0`}
+              >
+                <Icon className="h-5 w-5 mb-1" />
+                <span className="text-xs truncate">{label}</span>
+              </Link>
+            );
+          })}
         </div>
-      </footer>
-
-      {/* Click outside to close menus */}
-      {(showUserMenu || showMobileMenu) && (
-        <div 
-          className="fixed inset-0 z-30" 
-          onClick={() => {
-            setShowUserMenu(false);
-            setShowMobileMenu(false);
-          }}
-        />
-      )}
+      </nav>
     </div>
   );
 };

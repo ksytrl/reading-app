@@ -1,4 +1,4 @@
-// prisma/schema.prisma
+// backend/prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,18 +14,57 @@ model User {
   email     String?  @unique
   password  String
   avatar    String?
+  bio       String?  @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   isVip     Boolean  @default(false)
   vipExpiresAt DateTime?
+  
+  // 📊 用户统计
+  followerCount Int @default(0)
+  followingCount Int @default(0)
+  readingTime Int @default(0) // 总阅读时间（分钟）
+  booksRead Int @default(0)  // 已读书籍数量
+  
+  // 🎯 用户偏好（用于推荐系统）
+  preferredCategories String? // JSON数组存储喜欢的分类
+  readingHabits Json? // 阅读习惯数据
+  lastActiveAt DateTime @default(now())
 
   // 关联
   bookshelf UserBookshelf[]
   readingRecords ReadingRecord[]
   reviews BookReview[]
   readingSettings UserReadingSettings?
+  
+  // 🎯 社交功能关联
+  followers UserFollows[] @relation("UserFollowers")
+  following UserFollows[] @relation("UserFollowing")
+  shares Share[]
+  discussions Discussion[]
+  discussionComments DiscussionComment[]
+  reactions Reaction[]
+  
+  // 📚 推荐系统关联
+  recommendations Recommendation[]
+  readingGoals ReadingGoal[]
 
   @@map("users")
+}
+
+// 🎯 新增：用户关注系统
+model UserFollows {
+  id Int @id @default(autoincrement())
+  followerId Int
+  followingId Int
+  createdAt DateTime @default(now())
+  
+  // 关联
+  follower User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  
+  @@unique([followerId, followingId])
+  @@map("user_follows")
 }
 
 model Category {
@@ -34,6 +73,11 @@ model Category {
   description String?
   sortOrder   Int     @default(0)
   isActive    Boolean @default(true)
+  icon        String? // 分类图标
+  
+  // 📊 分类统计
+  bookCount   Int     @default(0)
+  popularityScore Float @default(0) // 热门度评分
 
   // 关联
   books Book[]
@@ -47,7 +91,7 @@ model Book {
   author          String
   categoryId      Int?
   cover           String?
-  description     String   @db.Text  // 改为 Text 类型
+  description     String   @db.Text
   totalWords      Int      @default(0)
   totalChapters   Int      @default(0)
   status          BookStatus @default(ONGOING)
@@ -61,6 +105,16 @@ model Book {
   rating          Float    @default(0.00)
   isFeatured      Boolean  @default(false)
   tags            Json?
+  
+  // 📊 推荐系统字段
+  popularityScore Float @default(0) // 热门度评分
+  qualityScore Float @default(0)    // 质量评分
+  trendingScore Float @default(0)   // 趋势评分
+  
+  // 📱 多格式支持
+  formats Json? // 支持的格式信息 {"epub": "url", "pdf": "url", "txt": "url"}
+  originalFormat String @default("txt") // 原始格式
+  fileSize Int @default(0) // 文件大小(字节)
 
   // 关联
   category Category? @relation(fields: [categoryId], references: [id])
@@ -68,6 +122,14 @@ model Book {
   bookshelf UserBookshelf[]
   readingRecords ReadingRecord[]
   reviews BookReview[]
+  
+  // 🎯 社交功能关联
+  shares Share[]
+  discussions Discussion[]
+  reactions Reaction[]
+  
+  // 📚 推荐系统关联
+  recommendations Recommendation[]
 
   @@map("books")
 }
@@ -83,6 +145,10 @@ model Chapter {
   price         Float    @default(0.00)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  
+  // 📱 多格式支持
+  htmlContent   String?  @db.LongText // HTML格式内容
+  markdownContent String? @db.LongText // Markdown格式内容
 
   // 关联
   book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
@@ -99,6 +165,10 @@ model UserBookshelf {
   addedAt    DateTime @default(now())
   lastReadAt DateTime?
   isFavorite Boolean  @default(false)
+  
+  // 📊 阅读统计
+  readingProgress Float @default(0) // 阅读进度百分比
+  totalReadingTime Int @default(0) // 阅读时间（分钟）
 
   // 关联
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -117,6 +187,11 @@ model ReadingRecord {
   readingPosition    Int      @default(0)
   readingTime        Int      @default(0)
   lastReadAt         DateTime @default(now()) @updatedAt
+  
+  // 📊 阅读行为数据（用于推荐系统）
+  sessionDuration Int @default(0) // 本次阅读时长（秒）
+  scrollSpeed Float @default(0)   // 阅读速度
+  deviceType String @default("web") // 设备类型
 
   // 关联
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -151,19 +226,161 @@ model BookReview {
   id         Int      @id @default(autoincrement())
   userId     Int
   bookId     Int
-  rating     Int
-  content    String?
+  rating     Int      @db.TinyInt // 1-5星评分
+  content    String?  @db.Text
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   likesCount Int      @default(0)
+  
+  // 🎯 评论质量标记
+  isVerified Boolean @default(false) // 是否为认证评论
+  helpfulCount Int @default(0)       // 有用评价数
 
   // 关联
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  reactions Reaction[]
 
+  @@unique([userId, bookId])
   @@map("book_reviews")
 }
 
+// 🎯 新增：分享功能
+model Share {
+  id Int @id @default(autoincrement())
+  userId Int
+  bookId Int
+  platform String // 分享平台：'wechat', 'weibo', 'qq', 'link'
+  content String? @db.Text // 分享文案
+  createdAt DateTime @default(now())
+  
+  // 📊 分享统计
+  clickCount Int @default(0)
+  
+  // 关联
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  
+  @@map("shares")
+}
+
+// 🎯 新增：讨论功能
+model Discussion {
+  id Int @id @default(autoincrement())
+  userId Int
+  bookId Int?
+  title String
+  content String @db.Text
+  type DiscussionType @default(GENERAL)
+  isSticky Boolean @default(false) // 是否置顶
+  isLocked Boolean @default(false) // 是否锁定
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // 📊 讨论统计
+  viewCount Int @default(0)
+  commentCount Int @default(0)
+  likeCount Int @default(0)
+  
+  // 关联
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book? @relation(fields: [bookId], references: [id], onDelete: SetNull)
+  comments DiscussionComment[]
+  reactions Reaction[]
+  
+  @@map("discussions")
+}
+
+// 🎯 新增：讨论评论
+model DiscussionComment {
+  id Int @id @default(autoincrement())
+  discussionId Int
+  userId Int
+  content String @db.Text
+  parentId Int? // 支持回复评论
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // 📊 评论统计
+  likeCount Int @default(0)
+  
+  // 关联
+  discussion Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent DiscussionComment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies DiscussionComment[] @relation("CommentReplies")
+  reactions Reaction[]
+  
+  @@map("discussion_comments")
+}
+
+// 🎯 新增：通用反应系统（点赞、不喜欢等）
+model Reaction {
+  id Int @id @default(autoincrement())
+  userId Int
+  type ReactionType
+  
+  // 关联目标（只能选择一个）
+  bookId Int?
+  reviewId Int?
+  discussionId Int?
+  commentId Int?
+  
+  createdAt DateTime @default(now())
+  
+  // 关联
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book? @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  review BookReview? @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  discussion Discussion? @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  comment DiscussionComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, type, bookId, reviewId, discussionId, commentId])
+  @@map("reactions")
+}
+
+// 📚 新增：推荐系统
+model Recommendation {
+  id Int @id @default(autoincrement())
+  userId Int
+  bookId Int
+  score Float // 推荐评分 0-1
+  reason String? // 推荐理由
+  algorithm String // 推荐算法：'collaborative', 'content', 'hybrid', 'trending'
+  createdAt DateTime @default(now())
+  
+  // 📊 推荐效果跟踪
+  isClicked Boolean @default(false)
+  isAdded Boolean @default(false) // 是否加入书架
+  
+  // 关联
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, bookId, algorithm])
+  @@map("recommendations")
+}
+
+// 📚 新增：阅读目标
+model ReadingGoal {
+  id Int @id @default(autoincrement())
+  userId Int
+  type ReadingGoalType
+  target Int // 目标数量
+  current Int @default(0) // 当前进度
+  period String // 时间周期：'daily', 'weekly', 'monthly', 'yearly'
+  startDate DateTime
+  endDate DateTime
+  isCompleted Boolean @default(false)
+  createdAt DateTime @default(now())
+  
+  // 关联
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("reading_goals")
+}
+
+// 枚举定义
 enum BookStatus {
   ONGOING
   COMPLETED
@@ -181,4 +398,29 @@ enum Theme {
   NIGHT
   SEPIA
   CLASSIC
+}
+
+enum DiscussionType {
+  GENERAL     // 一般讨论
+  BOOK_REVIEW // 书评讨论
+  CHAPTER     // 章节讨论
+  AUTHOR      // 作者讨论
+  QUESTION    // 问答
+}
+
+enum ReactionType {
+  LIKE
+  DISLIKE
+  LOVE
+  HAHA
+  WOW
+  SAD
+  ANGRY
+}
+
+enum ReadingGoalType {
+  BOOKS       // 阅读书籍数量
+  CHAPTERS    // 阅读章节数量
+  TIME        // 阅读时间（分钟）
+  WORDS       // 阅读字数
 }

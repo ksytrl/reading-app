@@ -1,14 +1,20 @@
-// src/pages/Upload/Upload.tsx
-import { useState, useRef, useEffect } from 'react';
+// frontend/src/pages/Upload/Upload.tsx
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload as UploadIcon, FileText, AlertCircle, CheckCircle, BookOpen, User } from 'lucide-react';
+import { Upload as UploadIcon, FileText, AlertCircle, CheckCircle, BookOpen, File, User } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
-import { api } from '../../services/api';
 
 interface UploadProgress {
   progress: number;
   stage: 'uploading' | 'parsing' | 'creating' | 'completed' | 'error';
   message: string;
+}
+
+interface FileInfo {
+  name: string;
+  size: number;
+  type: string;
+  format: 'txt' | 'epub' | 'pdf';
 }
 
 const Upload = () => {
@@ -17,6 +23,7 @@ const Upload = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -37,9 +44,43 @@ const Upload = () => {
     );
   }
 
+  // 支持的文件格式配置
+  const supportedFormats = {
+    txt: {
+      label: 'TXT文本',
+      description: '支持章节自动识别，在线阅读体验最佳',
+      icon: <FileText className="w-6 h-6 text-blue-600" />,
+      features: ['章节自动识别', '在线阅读', '全文检索']
+    },
+    epub: {
+      label: 'EPUB电子书',
+      description: '标准电子书格式，保留原始排版',
+      icon: <BookOpen className="w-6 h-6 text-green-600" />,
+      features: ['保留排版', '书签支持', '下载阅读']
+    },
+    pdf: {
+      label: 'PDF文档',
+      description: '文档格式，适合图文混排内容',
+      icon: <File className="w-6 h-6 text-red-600" />,
+      features: ['原版显示', '图文支持', '下载查看']
+    }
+  };
+
+  const getFileFormat = (file: File): 'txt' | 'epub' | 'pdf' | null => {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'txt': return 'txt';
+      case 'epub': return 'epub';
+      case 'pdf': return 'pdf';
+      default: return null;
+    }
+  };
+
   const handleFileSelect = (file: File) => {
-    if (file.type !== 'text/plain' && !file.name.endsWith('.txt')) {
-      alert('请选择txt格式的文件');
+    const format = getFileFormat(file);
+    
+    if (!format) {
+      alert('请选择支持的文件格式：TXT、EPUB 或 PDF');
       return;
     }
 
@@ -49,6 +90,12 @@ const Upload = () => {
     }
 
     setSelectedFile(file);
+    setFileInfo({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      format
+    });
     setUploadProgress(null);
   };
 
@@ -79,75 +126,144 @@ const Upload = () => {
     }
   };
 
+  // 🎯 使用XMLHttpRequest支持上传进度的上传函数
   const uploadFile = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || !fileInfo) return;
 
-    const formData = new FormData();
-    formData.append('txtFile', selectedFile);
+    return new Promise<void>((resolve, reject) => {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
 
-    try {
+      const xhr = new XMLHttpRequest();
+      const token = localStorage.getItem('auth-token');
+
+      // 设置请求头
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+
+      // 上传进度监听
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 50); // 上传阶段占50%
+          setUploadProgress(prev => prev ? {
+            ...prev,
+            progress: Math.min(percentComplete, 50)
+          } : null);
+        }
+      });
+
+      // 请求状态变化监听
+      xhr.addEventListener('readystatechange', () => {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const result = JSON.parse(xhr.responseText);
+              
+              // 解析阶段
+              setUploadProgress({
+                progress: 60,
+                stage: 'parsing',
+                message: fileInfo.format === 'txt' ? '正在解析章节...' : '正在处理文件...'
+              });
+
+              setTimeout(() => {
+                // 创建记录阶段
+                setUploadProgress({
+                  progress: 90,
+                  stage: 'creating',
+                  message: '正在创建书籍记录...'
+                });
+
+                setTimeout(() => {
+                  // 完成
+                  setUploadProgress({
+                    progress: 100,
+                    stage: 'completed',
+                    message: `上传成功！${result.chaptersCount ? `解析了 ${result.chaptersCount} 个章节，` : ''}已自动添加到书架`
+                  });
+
+                  // 2秒后显示跳转选项
+                  setTimeout(() => {
+                    const userChoice = confirm(
+                      `《${result.book?.title || '书籍'}》上传成功！\n\n点击"确定"跳转到书架\n点击"取消"跳转到书籍详情页`
+                    );
+                    
+                    if (userChoice) {
+                      navigate('/bookshelf');
+                    } else {
+                      navigate(`/book/${result.book?.id || 1}`);
+                    }
+                  }, 2000);
+
+                  resolve();
+                }, 500);
+              }, 1500);
+
+            } catch (error) {
+              console.error('Failed to parse response:', error);
+              setUploadProgress({
+                progress: 0,
+                stage: 'error',
+                message: '服务器响应格式错误'
+              });
+              reject(error);
+            }
+          } else {
+            let errorMessage = '上传失败';
+            try {
+              const errorResponse = JSON.parse(xhr.responseText);
+              errorMessage = errorResponse.error || errorMessage;
+            } catch {
+              errorMessage = `上传失败 (状态码: ${xhr.status})`;
+            }
+            
+            setUploadProgress({
+              progress: 0,
+              stage: 'error',
+              message: errorMessage
+            });
+            reject(new Error(errorMessage));
+          }
+        }
+      });
+
+      // 错误处理
+      xhr.addEventListener('error', () => {
+        setUploadProgress({
+          progress: 0,
+          stage: 'error',
+          message: '网络错误，请检查连接'
+        });
+        reject(new Error('网络错误'));
+      });
+
+      // 超时处理
+      xhr.addEventListener('timeout', () => {
+        setUploadProgress({
+          progress: 0,
+          stage: 'error',
+          message: '上传超时，请重试'
+        });
+        reject(new Error('上传超时'));
+      });
+
+      // 开始上传
       setUploadProgress({
         progress: 10,
         stage: 'uploading',
         message: '正在上传文件...'
       });
 
-      const response = await api.post('/books/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const progress = Math.round((progressEvent.loaded * 50) / progressEvent.total);
-            setUploadProgress({
-              progress: progress,
-              stage: 'uploading',
-              message: `正在上传文件... ${progress}%`
-            });
-          }
-        }
-      });
-
-      setUploadProgress({
-        progress: 60,
-        stage: 'parsing',
-        message: '正在解析章节...'
-      });
-
-      // 模拟解析时间
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      setUploadProgress({
-        progress: 90,
-        stage: 'creating',
-        message: '正在创建书籍记录...'
-      });
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      setUploadProgress({
-        progress: 100,
-        stage: 'completed',
-        message: `上传成功！解析了 ${response.data.chaptersCount} 个章节`
-      });
-
-      // 3秒后跳转到书籍详情页
-      setTimeout(() => {
-        navigate(`/book/${response.data.book.id}`);
-      }, 3000);
-
-    } catch (error: any) {
-      console.error('Upload failed:', error);
-      setUploadProgress({
-        progress: 0,
-        stage: 'error',
-        message: error.response?.data?.error || '上传失败'
-      });
-    }
+      xhr.timeout = 300000; // 5分钟超时
+      xhr.open('POST', '/api/books/upload', true);
+      xhr.send(formData);
+    });
   };
 
   const resetUpload = () => {
     setSelectedFile(null);
+    setFileInfo(null);
     setUploadProgress(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -162,26 +278,64 @@ const Upload = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const getFormatIcon = (format: 'txt' | 'epub' | 'pdf') => {
+    switch (format) {
+      case 'txt': return <FileText className="w-6 h-6 text-blue-600" />;
+      case 'epub': return <BookOpen className="w-6 h-6 text-green-600" />;
+      case 'pdf': return <File className="w-6 h-6 text-red-600" />;
+    }
+  };
+
+  const getFormatBadge = (format: 'txt' | 'epub' | 'pdf') => {
+    const styles = {
+      txt: 'bg-blue-100 text-blue-800',
+      epub: 'bg-green-100 text-green-800',
+      pdf: 'bg-red-100 text-red-800'
+    };
+    return `px-2 py-1 rounded text-xs font-medium ${styles[format]}`;
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* 页面标题 */}
       <div className="text-center">
         <BookOpen className="h-16 w-16 text-blue-600 mx-auto mb-4" />
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">上传txt书籍</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">上传电子书</h1>
         <p className="text-gray-600">
-          支持完整小说txt文件，系统将自动识别章节并创建阅读体验
+          支持多种格式电子书，系统将自动识别并创建最佳阅读体验
         </p>
       </div>
 
-      {/* 使用说明 */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <h3 className="font-semibold text-blue-900 mb-3">📖 使用说明</h3>
-        <ul className="space-y-2 text-sm text-blue-800">
-          <li>• 支持txt格式文件，最大50MB</li>
-          <li>• 系统会自动识别章节标题（如：第一章、第1回、Chapter 1等）</li>
-          <li>• 自动提取书名、作者信息</li>
-          <li>• 上传后可在个人书架中管理</li>
-        </ul>
+      {/* 格式支持说明 */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+        <h3 className="font-semibold text-blue-900 mb-4">📚 支持的文件格式</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {Object.entries(supportedFormats).map(([format, info]) => (
+            <div key={format} className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center mb-3">
+                <div className="mr-3">
+                  {info.icon}
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900">{info.label}</h4>
+                  <p className="text-xs text-gray-500 mt-1">{info.description}</p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                {info.features.map((feature, index) => (
+                  <span key={index} className="inline-block bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs mr-1 mb-1">
+                    {feature}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 text-sm text-blue-800">
+          <p>• 支持文件大小：最大50MB</p>
+          <p>• TXT格式会自动识别章节标题（如：第一章、第1回、Chapter 1等）</p>
+          <p>• 上传成功后会自动添加到您的书架</p>
+        </div>
       </div>
 
       {/* 文件上传区域 */}
@@ -198,10 +352,10 @@ const Upload = () => {
           >
             <UploadIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              选择或拖拽txt文件到这里
+              选择或拖拽文件到这里
             </h3>
             <p className="text-gray-500 mb-4">
-              支持拖拽上传或点击选择文件
+              支持 TXT、EPUB、PDF 格式，拖拽上传或点击选择文件
             </p>
             <button
               type="button"
@@ -212,7 +366,7 @@ const Upload = () => {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt"
+              accept=".txt,.epub,.pdf"
               onChange={handleFileChange}
               className="hidden"
             />
@@ -221,11 +375,21 @@ const Upload = () => {
           <div className="p-8">
             {/* 选中的文件信息 */}
             <div className="flex items-start space-x-4 mb-6">
-              <FileText className="h-12 w-12 text-blue-600 flex-shrink-0" />
+              <div className="flex-shrink-0">
+                {getFormatIcon(fileInfo!.format)}
+              </div>
               <div className="flex-1">
-                <h3 className="font-medium text-gray-900">{selectedFile.name}</h3>
-                <p className="text-sm text-gray-500">
-                  {formatFileSize(selectedFile.size)} • 文本文件
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-medium text-gray-900">{selectedFile.name}</h3>
+                  <span className={getFormatBadge(fileInfo!.format)}>
+                    {fileInfo!.format.toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 mb-2">
+                  {formatFileSize(selectedFile.size)} • {supportedFormats[fileInfo!.format].label}
+                </p>
+                <p className="text-sm text-gray-600">
+                  {supportedFormats[fileInfo!.format].description}
                 </p>
               </div>
               <button
@@ -266,7 +430,7 @@ const Upload = () => {
                   <div className="flex items-center mt-3 text-green-600">
                     <CheckCircle className="h-5 w-5 mr-2" />
                     <span className="text-sm">
-                      上传成功！3秒后将跳转到书籍详情页...
+                      上传成功！已自动添加到书架，2秒后将显示跳转选项...
                     </span>
                   </div>
                 )}
@@ -318,13 +482,36 @@ const Upload = () => {
         )}
       </div>
 
+      {/* 使用提示 */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+        <h3 className="font-semibold text-gray-900 mb-3">💡 使用提示</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+          <div>
+            <h4 className="font-medium mb-2">📖 TXT格式</h4>
+            <ul className="space-y-1">
+              <li>• 支持自动章节识别</li>
+              <li>• 提取书名和作者信息</li>
+              <li>• 最佳在线阅读体验</li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-medium mb-2">📚 EPUB/PDF格式</h4>
+            <ul className="space-y-1">
+              <li>• 保留原始文档格式</li>
+              <li>• 支持下载离线阅读</li>
+              <li>• 适合图文混排内容</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       {/* 我的上传记录 */}
       <UserBooksSection />
     </div>
   );
 };
 
-// 用户上传的书籍列表组件
+// 🎯 用户上传的书籍列表组件
 const UserBooksSection = () => {
   const [userBooks, setUserBooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -332,8 +519,17 @@ const UserBooksSection = () => {
 
   const loadUserBooks = async () => {
     try {
-      const response = await api.get('/users/books');
-      setUserBooks(response.data);
+      const token = localStorage.getItem('auth-token');
+      const response = await fetch('/api/users/books', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const books = await response.json();
+        setUserBooks(books);
+      }
     } catch (error) {
       console.error('Failed to load user books:', error);
     } finally {
@@ -341,80 +537,71 @@ const UserBooksSection = () => {
     }
   };
 
-  const deleteBook = async (bookId: number, bookTitle: string) => {
-    if (!confirm(`确定要删除《${bookTitle}》吗？此操作不可恢复！`)) {
-      return;
-    }
-
-    try {
-      await api.delete(`/books/${bookId}`);
-      setUserBooks(userBooks.filter(book => book.id !== bookId));
-      alert('删除成功');
-    } catch (error) {
-      console.error('Delete failed:', error);
-      alert('删除失败');
-    }
-  };
-
-  useEffect(() => {
+  React.useEffect(() => {
     loadUserBooks();
   }, []);
 
   if (loading) {
     return (
-      <div className="text-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <h3 className="font-semibold text-gray-900 mb-4">我的上传记录</h3>
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="text-gray-500 mt-2">加载中...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border">
-      <div className="p-6 border-b">
-        <h3 className="text-lg font-semibold text-gray-900">我上传的书籍</h3>
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-gray-900">我的上传记录</h3>
+        <User className="h-5 w-5 text-gray-400" />
       </div>
       
-      {userBooks.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          <BookOpen className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-          <p>还没有上传任何书籍</p>
-          <p className="text-sm">上传您的第一本书籍吧！</p>
-        </div>
-      ) : (
-        <div className="divide-y">
-          {userBooks.map((book) => (
-            <div key={book.id} className="p-6 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <h4 className="font-medium text-gray-900 mb-1">{book.title}</h4>
-                  <div className="flex items-center space-x-4 text-sm text-gray-500">
-                    <span className="flex items-center">
-                      <User className="h-4 w-4 mr-1" />
-                      {book.author}
-                    </span>
-                    <span>{book.totalChapters} 章节</span>
-                    <span>{Math.round(book.totalWords / 1000)}k字</span>
-                    <span>{new Date(book.createdAt).toLocaleDateString()}</span>
-                  </div>
+      {userBooks.length > 0 ? (
+        <div className="space-y-3">
+          {userBooks.slice(0, 5).map((book) => (
+            <div
+              key={book.id}
+              className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+              onClick={() => navigate(`/book/${book.id}`)}
+            >
+              <div className="flex items-center space-x-3">
+                <BookOpen className="h-8 w-8 text-blue-600" />
+                <div>
+                  <h4 className="font-medium text-gray-900">{book.title}</h4>
+                  <p className="text-sm text-gray-500">
+                    {book.author} • {book.totalChapters || 1}章节
+                  </p>
                 </div>
-                
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => navigate(`/book/${book.id}`)}
-                    className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  >
-                    查看
-                  </button>
-                  <button
-                    onClick={() => deleteBook(book.id, book.title)}
-                    className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    删除
-                  </button>
-                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-500">
+                  {new Date(book.createdAt).toLocaleDateString()}
+                </p>
+                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                  {book.originalFormat?.toUpperCase() || 'TXT'}
+                </span>
               </div>
             </div>
           ))}
+          
+          {userBooks.length > 5 && (
+            <button
+              onClick={() => navigate('/bookshelf')}
+              className="w-full py-2 text-blue-600 text-sm hover:text-blue-700"
+            >
+              查看全部 {userBooks.length} 本书籍 →
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="text-center py-8">
+          <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">还没有上传任何书籍</p>
+          <p className="text-sm text-gray-400 mt-1">上传您的第一本电子书开始阅读吧！</p>
         </div>
       )}
     </div>

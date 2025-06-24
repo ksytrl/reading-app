@@ -1,13 +1,350 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    
+    <!-- 📱 基础favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    
+    <!-- 📱 PWA基础配置 -->
+    <title>阅读App - 全栈在线阅读平台</title>
+    <meta name="description" content="支持用户上传txt书籍的现代化在线阅读平台，提供优质的阅读体验，支持离线阅读。" />
+    <meta name="keywords" content="在线阅读,电子书,txt上传,离线阅读,PWA,小说阅读" />
+    <meta name="author" content="Reading App Team" />
+    
+    <!-- 📱 PWA清单文件 -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- 🎨 主题颜色 -->
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="msapplication-TileColor" content="#2563eb" />
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+    
+    <!-- 📱 iOS Safari PWA支持 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="阅读App" />
+    
+    <!-- iOS图标 - 多种尺寸 -->
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="57x57" href="/icons/icon-72x72.png" />
+    <link rel="apple-touch-icon" sizes="60x60" href="/icons/icon-72x72.png" />
+    <link rel="apple-touch-icon" sizes="72x72" href="/icons/icon-72x72.png" />
+    <link rel="apple-touch-icon" sizes="76x76" href="/icons/icon-96x96.png" />
+    <link rel="apple-touch-icon" sizes="114x114" href="/icons/icon-128x128.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/icons/icon-128x128.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144x144.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.png" />
+    
+    <!-- 📱 Android Chrome PWA支持 -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="阅读App" />
+    
+    <!-- 🖼️ 启动画面图片 (iOS) -->
+    <link rel="apple-touch-startup-image" href="/icons/icon-512x512.png" />
+    
+    <!-- 🔗 社交媒体分享 -->
+    <meta property="og:title" content="阅读App - 全栈在线阅读平台" />
+    <meta property="og:description" content="支持用户上传txt书籍的现代化在线阅读平台，提供优质的阅读体验，支持离线阅读。" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://reading-app.example.com" />
+    <meta property="og:image" content="/icons/icon-512x512.png" />
+    <meta property="og:site_name" content="阅读App" />
+    <meta property="og:locale" content="zh_CN" />
+    
+    <!-- 🐦 Twitter卡片 -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="阅读App - 全栈在线阅读平台" />
+    <meta name="twitter:description" content="支持用户上传txt书籍的现代化在线阅读平台，提供优质的阅读体验，支持离线阅读。" />
+    <meta name="twitter:image" content="/icons/icon-512x512.png" />
+    
+    <!-- 🔍 搜索引擎优化 -->
+    <meta name="robots" content="index, follow" />
+    <meta name="googlebot" content="index, follow" />
+    <link rel="canonical" href="https://reading-app.example.com" />
+    
+    <!-- 📱 移动端优化 -->
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    
+    <!-- 🎯 预加载关键资源 -->
+    <link rel="preconnect" href="http://localhost:3001" />
+    <link rel="dns-prefetch" href="http://localhost:3001" />
+    
+    <!-- 📊 性能和安全 -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    
+    <!-- 🎨 CSS变量用于主题 -->
+    <style>
+      :root {
+        --primary-color: #2563eb;
+        --primary-dark: #1d4ed8;
+        --background-color: #ffffff;
+        --text-color: #111827;
+        --border-color: #e5e7eb;
+      }
+      
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background-color: #111827;
+          --text-color: #f9fafb;
+          --border-color: #374151;
+        }
+      }
+      
+      /* 🎨 启动画面样式 */
+      .app-loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, var(--primary-color), #7c3aed);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        font-family: system-ui, -apple-system, sans-serif;
+        z-index: 9999;
+      }
+      
+      .app-loading-logo {
+        width: 80px;
+        height: 80px;
+        margin-bottom: 24px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+      }
+      
+      .app-loading-title {
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+      
+      .app-loading-subtitle {
+        font-size: 14px;
+        opacity: 0.8;
+        margin-bottom: 32px;
+      }
+      
+      .app-loading-spinner {
+        width: 32px;
+        height: 32px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top: 2px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      /* 📱 PWA安装提示隐藏 */
+      .pwa-install-banner {
+        display: none;
+      }
+      
+      /* 🎯 聚焦样式优化 */
+      :focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+      }
+      
+      /* 📱 移动端滚动优化 */
+      body {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: none;
+      }
+      
+      /* 🔄 Service Worker更新提示样式 */
+      .sw-update-banner {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(90deg, #059669, #10b981);
+        color: white;
+        padding: 12px;
+        text-align: center;
+        transform: translateY(-100%);
+        transition: transform 0.3s ease;
+        z-index: 1000;
+      }
+      
+      .sw-update-banner.show {
+        transform: translateY(0);
+      }
+    </style>
   </head>
   <body>
+    <!-- 🎨 应用启动画面 -->
+    <div id="app-loading" class="app-loading">
+      <div class="app-loading-logo">
+        📚
+      </div>
+      <div class="app-loading-title">阅读App</div>
+      <div class="app-loading-subtitle">正在加载中...</div>
+      <div class="app-loading-spinner"></div>
+    </div>
+    
+    <!-- 🔄 Service Worker更新提示 -->
+    <div id="sw-update-banner" class="sw-update-banner">
+      <span>🎉 新版本可用！</span>
+      <button id="sw-update-btn" style="margin-left: 12px; background: rgba(255,255,255,0.2); border: none; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+        立即更新
+      </button>
+      <button id="sw-update-close" style="margin-left: 8px; background: none; border: none; color: white; cursor: pointer;">
+        ✕
+      </button>
+    </div>
+    
+    <!-- 📱 主应用容器 -->
     <div id="root"></div>
+    
+    <!-- 📱 No-JavaScript提示 -->
+    <noscript>
+      <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f3f4f6; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: system-ui; text-align: center; padding: 20px;">
+        <div style="max-width: 400px;">
+          <h1 style="color: #1f2937; margin-bottom: 16px;">需要启用JavaScript</h1>
+          <p style="color: #6b7280; line-height: 1.6;">
+            阅读App需要JavaScript才能运行。请启用JavaScript后刷新页面。
+          </p>
+          <button onclick="location.reload()" style="margin-top: 20px; background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer;">
+            刷新页面
+          </button>
+        </div>
+      </div>
+    </noscript>
+    
+    <!-- 🔧 Service Worker注册脚本 -->
+    <script>
+      // 🔧 Service Worker支持检测和注册
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          // 注册Service Worker
+          navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+              console.log('✅ Service Worker注册成功:', registration);
+              
+              // 监听更新
+              registration.addEventListener('updatefound', function() {
+                const newWorker = registration.installing;
+                if (newWorker) {
+                  newWorker.addEventListener('statechange', function() {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                      // 显示更新提示
+                      showUpdateBanner();
+                    }
+                  });
+                }
+              });
+            })
+            .catch(function(error) {
+              console.error('❌ Service Worker注册失败:', error);
+            });
+        });
+      }
+      
+      // 🔄 显示更新横幅
+      function showUpdateBanner() {
+        const banner = document.getElementById('sw-update-banner');
+        const updateBtn = document.getElementById('sw-update-btn');
+        const closeBtn = document.getElementById('sw-update-close');
+        
+        if (banner) {
+          banner.classList.add('show');
+          
+          // 更新按钮点击事件
+          updateBtn?.addEventListener('click', function() {
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.ready.then(function(registration) {
+                if (registration.waiting) {
+                  registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                }
+              });
+            }
+            location.reload();
+          });
+          
+          // 关闭按钮点击事件
+          closeBtn?.addEventListener('click', function() {
+            banner.classList.remove('show');
+          });
+        }
+      }
+      
+      // 🎨 隐藏启动画面
+      function hideLoadingScreen() {
+        const loading = document.getElementById('app-loading');
+        if (loading) {
+          loading.style.opacity = '0';
+          setTimeout(() => {
+            loading.style.display = 'none';
+          }, 300);
+        }
+      }
+      
+      // 📱 PWA安装检测
+      let deferredPrompt;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        deferredPrompt = e;
+        // 这里可以显示自定义的安装提示，但我们会在React组件中处理
+      });
+      
+      // 📱 PWA安装完成事件
+      window.addEventListener('appinstalled', function() {
+        console.log('🎉 PWA安装完成');
+        deferredPrompt = null;
+      });
+      
+      // 🔍 错误监控
+      window.addEventListener('error', function(e) {
+        console.error('🚨 全局错误:', e.error);
+        // 这里可以上报错误到监控系统
+      });
+      
+      // 📊 性能监控
+      window.addEventListener('load', function() {
+        if ('performance' in window) {
+          const perfData = performance.getEntriesByType('navigation')[0];
+          console.log('📊 页面加载性能:', {
+            loadTime: perfData.loadEventEnd - perfData.loadEventStart,
+            domContentLoaded: perfData.domContentLoadedEventEnd - perfData.domContentLoadedEventStart,
+            firstPaint: performance.getEntriesByType('paint')[0]?.startTime || 0
+          });
+        }
+      });
+      
+      // 🔄 页面可见性变化处理
+      document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+          // 页面重新可见时检查Service Worker更新
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(function(registration) {
+              registration.update();
+            });
+          }
+        }
+      });
+    </script>
+    
+    <!-- 📊 React应用入口脚本 -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
